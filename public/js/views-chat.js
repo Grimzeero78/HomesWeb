@@ -45,7 +45,7 @@ async function viewChats() {
   };
   await load();
   clearInterval(chatTimer);
-  chatTimer = setInterval(load, 8000);
+  chatTimer = setInterval(() => { if (!document.hidden) load(); }, 12000);
   onLeave(() => clearInterval(chatTimer));
 }
 
@@ -108,15 +108,27 @@ async function viewThread(id) {
         ${ic('x')}<i>${mine ? 'You deleted this message' : 'This message was deleted'}</i>
         <span class="bub-time">${timeStr(m.createdAt)}</span></div>`;
     }
-    return `<div class="bub ${mine ? 'me' : ''}" data-mid="${m.id}" data-ts="${m.createdAt}" data-text="${esc(m.text)}">${esc(m.text)}${m.edited ? '<span class="bub-ed">edited</span>' : ''}<span class="bub-time">${timeStr(m.createdAt)}</span></div>`;
+    // WhatsApp-style ticks: ✓ sent, ✓✓ read (blue) — driven by readAt from the server
+    const tick = mine ? `<span class="bub-tick${m.readAt ? ' rd' : ''}">${m.readAt ? '✓✓' : '✓'}</span>` : '';
+    return `<div class="bub ${mine ? 'me' : ''}" data-mid="${m.id}" data-ts="${m.createdAt}" data-text="${esc(m.text)}">${esc(m.text)}${m.edited ? '<span class="bub-ed">edited</span>' : ''}<span class="bub-time">${timeStr(m.createdAt)}${tick}</span></div>`;
   }
 
+  // replace EVERY bubble for this message id (there can be more than one after races) —
+  // leaving a stale duplicate behind was the “deleted but still showing text” bug
   function retypeBubble(m) {
-    const b = msgsEl.querySelector(`.bub[data-mid="${m.id}"]`);
-    if (!b) return;
-    const tmp = document.createElement('div');
-    tmp.innerHTML = bubble(m);
-    b.replaceWith(tmp.firstElementChild);
+    msgsEl.querySelectorAll(`.bub[data-mid="${m.id}"]`).forEach(b => {
+      const tmp = document.createElement('div');
+      tmp.innerHTML = bubble(m);
+      b.replaceWith(tmp.firstElementChild);
+    });
+  }
+
+  // ONE place to add messages: if a bubble for this id already exists, refresh it instead of
+  // inserting a duplicate. The old code inserted blindly, so a poll that raced with a send
+  // rendered the same message twice — the “enter sends 2 messages” report.
+  function addMsg(m) {
+    if (msgsEl.querySelector(`.bub[data-mid="${m.id}"]`)) { retypeBubble(m); return; }
+    msgsEl.insertAdjacentHTML('beforeend', bubble(m));
   }
 
   // ----- message actions (long-press on touch, right-click on desktop) -----
@@ -140,10 +152,10 @@ async function viewThread(id) {
           closeModal();
           if (act === 'copy') copyText(bub.dataset.text || '');
           else if (act === 'edit') startEdit(bub);
-          else if (act === 'delme') deleteForMe(mid, bub);
+          else if (act === 'delme') deleteForMe(mid);
           else if (act === 'delall') confirmDlg('Delete for everyone?',
             'This message will be removed for both of you. This cannot be undone.',
-            'Delete', () => deleteForAll(mid, bub), true);
+            'Delete', () => deleteForAll(mid, +bub.dataset.ts), true);
         });
       });
   }
@@ -172,15 +184,15 @@ async function viewThread(id) {
   }
   v.querySelector('#th-editcancel').onclick = cancelEdit;
 
-  async function deleteForMe(mid, bub) {
+  async function deleteForMe(mid) {
     const r = await api('/convs/' + id + '/messages/' + mid + '?scope=me', { method: 'DELETE' });
     if (!r.ok) { toast(r.error, true); return; }
-    bub.remove();
+    msgsEl.querySelectorAll(`.bub[data-mid="${mid}"]`).forEach(b => b.remove());
   }
-  async function deleteForAll(mid, bub) {
+  async function deleteForAll(mid, ts) {
     const r = await api('/convs/' + id + '/messages/' + mid + '?scope=all', { method: 'DELETE' });
     if (!r.ok) { toast(r.error, true); return; }
-    retypeBubble({ id: mid, senderId: me, createdAt: +bub.dataset.ts, deleted: 1 });
+    retypeBubble({ id: mid, senderId: me, createdAt: ts, deleted: 1 });
   }
 
   let lpTimer = null;
@@ -211,8 +223,16 @@ async function viewThread(id) {
     if (!r.ok) return;
     const nearBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 160;
     if (r.items.length) {
-      r.items.forEach(m => { msgsEl.insertAdjacentHTML('beforeend', bubble(m)); lastId = Math.max(lastId, m.id); });
+      r.items.forEach(m => { lastId = Math.max(lastId, m.id); addMsg(m); });
       if (initial || nearBottom) msgsEl.scrollTop = msgsEl.scrollHeight;
+    }
+    // sync tail: edits / deletes / read receipts that happened AFTER we first drew a bubble
+    // (the old poll only fetched messages newer than lastId, so the other side's
+    //  "delete for everyone" or an edit never reached an open thread)
+    if (r.sync && r.sync.length) {
+      r.sync.forEach(m => {
+        if (msgsEl.querySelector(`.bub[data-mid="${m.id}"]`)) retypeBubble(m);
+      });
     }
     // typing indicator (other side typed within the last 6s)
     const ex = msgsEl.querySelector('.typing');
@@ -230,29 +250,39 @@ async function viewThread(id) {
     if (now - lastTypingSent > 2500) { lastTypingSent = now; api('/convs/' + id + '/typing', { body: {} }); }
   });
 
+  let sending = false;
   async function send() {
+    if (sending) return;                 // one request at a time — no double POST on double-Enter
     const text = inp.value.trim();
     if (!text) return;
-    if (editingMid) {
-      const r = await api('/convs/' + id + '/messages/' + editingMid, { method: 'PATCH', body: { text } });
-      if (!r.ok) { toast(r.error, true); return; }
-      const bub = msgsEl.querySelector(`.bub[data-mid="${editingMid}"]`);
-      if (bub) retypeBubble({ id: editingMid, senderId: me, createdAt: +bub.dataset.ts, text, edited: 1 });
-      cancelEdit();
-      return;
+    sending = true;
+    try {
+      if (editingMid) {
+        const r = await api('/convs/' + id + '/messages/' + editingMid, { method: 'PATCH', body: { text } });
+        if (!r.ok) { toast(r.error, true); return; }
+        const bub = msgsEl.querySelector(`.bub[data-mid="${editingMid}"]`);
+        retypeBubble({ id: editingMid, senderId: me, createdAt: bub ? +bub.dataset.ts : Date.now(), text, edited: 1 });
+        cancelEdit();
+        return;
+      }
+      inp.value = '';
+      const r = await api('/convs/' + id + '/messages', { body: { text } });
+      if (!r.ok) { toast(r.error, true); inp.value = text; return; }
+      addMsg({ senderId: me, text, createdAt: Date.now(), id: r.id });
+      lastId = Math.max(lastId, r.id);
+      msgsEl.scrollTop = msgsEl.scrollHeight;
+    } finally {
+      sending = false;
     }
-    inp.value = '';
-    const r = await api('/convs/' + id + '/messages', { body: { text } });
-    if (!r.ok) { toast(r.error, true); inp.value = text; return; }
-    msgsEl.insertAdjacentHTML('beforeend', bubble({ senderId: me, text, createdAt: Date.now(), id: r.id }));
-    lastId = Math.max(lastId, r.id);
-    msgsEl.scrollTop = msgsEl.scrollHeight;
   }
   v.querySelector('#th-send').onclick = send;
-  inp.addEventListener('keydown', e => { if (e.key === 'Enter') send(); });
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.repeat) { e.preventDefault(); send(); } });
 
   await poll(true);
   clearInterval(chatTimer);
-  chatTimer = setInterval(() => poll(false), 2500);
+  // 3s while you are looking at the app; ~12s when the tab is in the background (saves ~75% of
+  // server load — this is what keeps the site fast and cheap at 1000 users)
+  let tickN = 0;
+  chatTimer = setInterval(() => { tickN++; if (document.hidden && tickN % 4 !== 1) return; poll(false); }, 3000);
   onLeave(() => { clearInterval(chatTimer); });
 }

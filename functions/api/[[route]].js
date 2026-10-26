@@ -183,6 +183,11 @@ CREATE TABLE IF NOT EXISTS messages (
   readAt INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(convId, id);
+CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages(convId, readAt);
+CREATE INDEX IF NOT EXISTS idx_conv_student ON conversations(studentId, lastAt);
+CREATE INDEX IF NOT EXISTS idx_conv_landlord ON conversations(landlordId, lastAt);
+CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_listings_status ON listings(status, createdAt);
 CREATE TABLE IF NOT EXISTS favorites (
   user_id INTEGER NOT NULL,
   listing_id INTEGER NOT NULL,
@@ -248,7 +253,19 @@ async function ensureSchema(env) {
         ];
         for (const st of mig3) { try { await env.DB.prepare(st).run(); } catch (e) { /* column exists */ } }
       }
-      await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_ver','3')").run();
+      if (ver < 4) {
+        // v4: scale indexes — chats list, unread counter, session cleanup, browse sort.
+        // Without these every chat/unread query table-scans; at 1000 users that is a slow, costly site.
+        const mig4 = [
+          'CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages(convId, readAt)',
+          'CREATE INDEX IF NOT EXISTS idx_conv_student ON conversations(studentId, lastAt)',
+          'CREATE INDEX IF NOT EXISTS idx_conv_landlord ON conversations(landlordId, lastAt)',
+          'CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at)',
+          'CREATE INDEX IF NOT EXISTS idx_listings_status ON listings(status, createdAt)',
+        ];
+        for (const st of mig4) { try { await env.DB.prepare(st).run(); } catch (e) { /* exists */ } }
+      }
+      await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_ver','4')").run();
     })().catch(e => { schemaReady = null; throw e; });
   }
   await schemaReady;
@@ -734,18 +751,31 @@ export async function onRequest(context) {
         if (!c || (c.studentId !== u.id && c.landlordId !== u.id && u.role !== 'ADMIN')) return bad('Conversation not found', 404);
         if (method === 'GET') {
           const after = N(new URL(request.url).searchParams.get('after'));
+          const hidCond = "(hiddenFor IS NULL OR hiddenFor = '' OR hiddenFor = '[]' OR hiddenFor NOT LIKE ?)";
           const rows = (await env.DB.prepare(
-            `SELECT * FROM (SELECT * FROM messages WHERE convId = ? AND id > ? AND (hiddenFor IS NULL OR hiddenFor = '' OR hiddenFor = '[]' OR hiddenFor NOT LIKE ?) ORDER BY id DESC LIMIT 300) ORDER BY id ASC`)
+            `SELECT * FROM (SELECT * FROM messages WHERE convId = ? AND id > ? AND ${hidCond} ORDER BY id DESC LIMIT 300) ORDER BY id ASC`)
             .bind(cid, after, '%"' + u.id + '"%').all()).results || [];
           rows.forEach(m => {
             if (m.deleted) m.text = '';           // tombstone — never leak deleted text
             delete m.hiddenFor;
           });
-          // the viewer is looking at the thread — mark everything read
-          await env.DB.prepare('UPDATE messages SET readAt = ? WHERE convId = ? AND senderId != ? AND readAt IS NULL')
-            .bind(Date.now(), cid, u.id).run();
+          // mark read ONLY when something new arrived — running this UPDATE on every 3s poll
+          // with zero new rows burned D1 writes for nothing (real cost at 1000 users)
+          if (rows.length) {
+            await env.DB.prepare('UPDATE messages SET readAt = ? WHERE convId = ? AND senderId != ? AND readAt IS NULL')
+              .bind(Date.now(), cid, u.id).run();
+          }
+          // sync tail: the newest messages with their edited/deleted/read state so an OPEN thread
+          // sees the other side's edits, deletions and read receipts (poll ?after= can't carry these)
+          const sync = (await env.DB.prepare(
+            `SELECT * FROM (SELECT * FROM messages WHERE convId = ? AND ${hidCond} ORDER BY id DESC LIMIT 12) ORDER BY id ASC`)
+            .bind(cid, '%"' + u.id + '"%').all()).results || [];
+          sync.forEach(m => {
+            if (m.deleted) m.text = '';
+            delete m.hiddenFor;
+          });
           const otherTyping = !!(c.typingBy && c.typingBy !== u.id && c.typingAt && Date.now() - c.typingAt < 6000);
-          return ok({ items: rows, me: u.id, otherTyping });
+          return ok({ items: rows, sync, me: u.id, otherTyping });
         }
         if (method === 'POST') {
           if (!rateLimit('msg:' + u.id, 30, 60_000)) return tooMany();
@@ -804,8 +834,12 @@ export async function onRequest(context) {
         const c = await env.DB.prepare('SELECT * FROM conversations WHERE id = ?').bind(cid).first();
         if (!c || (c.studentId !== u.id && c.landlordId !== u.id)) return bad('Conversation not found', 404);
         if (!rateLimit('typ:' + u.id, 30, 60_000)) return tooMany();
-        await env.DB.prepare('UPDATE conversations SET typingAt = ?, typingBy = ? WHERE id = ?')
-          .bind(Date.now(), u.id, cid).run();
+        // skip the write when this user's typing flag is already fresh — saves thousands of
+        // pointless D1 writes per day (typing pings are the #1 write amplifier in chat apps)
+        if (!(c.typingBy === u.id && c.typingAt && Date.now() - c.typingAt < 4000)) {
+          await env.DB.prepare('UPDATE conversations SET typingAt = ?, typingBy = ? WHERE id = ?')
+            .bind(Date.now(), u.id, cid).run();
+        }
         return ok({});
       }
     }

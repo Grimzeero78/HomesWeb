@@ -46,17 +46,10 @@ function osmMap(el, opts) {
   return map;
 }
 
-// shared geocoder (free Nominatim service, cached in localStorage for 7 days)
+// legacy geocoder (used by older flows) — now bounded to the Chuka area
 async function geocodePlace(q) {
-  const key = 'ch_geo:' + q;
-  try { const c = localStorage.getItem(key); if (c) return JSON.parse(c); } catch (e) { /* ignore */ }
-  try {
-    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ke&q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } });
-    const j = await r.json();
-    const hit = j && j[0] ? { lat: +j[0].lat, lng: +j[0].lon } : null;
-    try { localStorage.setItem(key, JSON.stringify(hit)); } catch (e) { /* ignore */ }
-    return hit;
-  } catch (e) { return null; }
+  const hit = await searchPlaces(q);
+  return hit ? { lat: hit.lat, lng: hit.lng } : null;
 }
 
 const gateIcon = () => L.divIcon({ className: '', html: '<div class="pin-gate">GATE</div>', iconSize: [48, 24], iconAnchor: [24, 12] });
@@ -68,7 +61,11 @@ async function viewMap() {
   const v = document.getElementById('view');
   v.innerHTML = `
     <div class="sec-h"><h2>Map of rooms near campus</h2></div>
-    <p class="hint-t" style="margin:-6px 0 10px">Use the layers button (top right of the map) to switch to <b>Satellite</b> or street view.</p>
+    <div class="map-search">
+      <input class="inp" id="map-q" placeholder="Search a place — e.g. Ndagani, Main Gate, Chuka Town" autocomplete="off">
+      <button class="btn btn-primary btn-sm" id="map-go" type="button" style="flex:none">${ic('search')} Search</button>
+    </div>
+    <p class="hint-t" style="margin:-4px 0 10px">Green pins = rooms. Switch to <b>Satellite</b> (layers button, top right) to see houses and gates clearly.</p>
     <div class="map-wrap">
       <div class="map-side" id="map-side">${skeletonGrid(2)}</div>
       <div id="mapbox"><div class="gm-err">Loading map…</div></div>
@@ -106,23 +103,38 @@ async function viewMap() {
   try {
     await loadLeaflet();
     box.querySelector('.gm-err')?.remove();
-    const map = osmMap(box, { center: [GATE.lat, GATE.lng], zoom: 14, scrollWheelZoom: false });
+    // zoom 16 = street & house level: road names + popular places are readable here.
+    const map = osmMap(box, { center: [GATE.lat, GATE.lng], zoom: 16, scrollWheelZoom: true });
+    L.control.scale({ imperial: false }).addTo(map);
     window._lmap = map;
+
+    // ---- search: local gazetteer first (instant), Nominatim (bounded to Chuka) as fallback ----
+    const flyTo = (lat, lng, zoom) => map.flyTo([lat, lng], zoom || 17, { duration: 0.8 });
+    const doSearch = async () => {
+      const q = v.querySelector('#map-q').value.trim();
+      if (!q) return;
+      go.disabled = true;
+      const hit = await searchPlaces(q);
+      go.disabled = false;
+      if (!hit) { toast('Place not found — try "Ndagani", "Main Gate" or a road name', true); return; }
+      flyTo(hit.lat, hit.lng);
+    };
+    const go = v.querySelector('#map-go');
+    go.onclick = doSearch;
+    v.querySelector('#map-q').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
+
+    // ---- permanent area labels (verified coordinates — always visible, no geocoder needed) ----
+    CHUKA_PLACES.forEach(p => {
+      if (p.n === 'Main Gate') return; // drawn separately below
+      L.marker([p.lat, p.lng], { icon: landIcon(p.n), keyboard: false, interactive: false, zIndexOffset: 100 }).addTo(map);
+    });
 
     // Chuka University Main Gate — exact, always shown
     L.marker([GATE.lat, GATE.lng], { icon: gateIcon(), keyboard: false, zIndexOffset: 500 }).addTo(map)
       .bindTooltip('Chuka University Main Gate', { permanent: true, direction: 'bottom', offset: [0, 8], className: 'gate-tip' });
 
-    // Popular places around campus (geocoded from OpenStreetMap, cached) — easy directions for students
-    [['Chuka Town', 'Chuka, Kenya'], ['Ndagani', 'Ndagani, Chuka, Kenya'], ['Mungoni', 'Mungoni, Chuka, Kenya']]
-      .forEach(async ([name, q]) => {
-        const hit = await geocodePlace(q);
-        if (hit && Number.isFinite(hit.lat)) {
-          L.marker([hit.lat, hit.lng], { icon: landIcon(name), keyboard: false, interactive: false, zIndexOffset: 100 }).addTo(map);
-        }
-      });
-
     const bounds = [[GATE.lat, GATE.lng]];
+    CHUKA_PLACES.forEach(p => bounds.push([p.lat, p.lng]));
     withPos.forEach(l => {
       const boosted = l.boostedUntil && l.boostedUntil > Date.now();
       L.marker([l.lat, l.lng], { icon: priceIcon(shortK(l.rent), boosted), title: l.title, keyboard: false })
@@ -136,7 +148,8 @@ async function viewMap() {
         .addTo(map);
       bounds.push([l.lat, l.lng]);
     });
-    if (bounds.length > 1) map.fitBounds(bounds, { padding: [40, 40] });
+    // maxZoom keeps fitBounds from zooming out to a nameless country view
+    if (bounds.length > 1) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
   } catch (e) {
     box.innerHTML = `<div class="gm-err"><div><b>Map failed to load.</b><br>
       <span style="margin-top:6px;display:inline-block">Check your internet connection and try again.</span></div></div>`;

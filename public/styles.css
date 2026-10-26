@@ -250,6 +250,11 @@ textarea.inp{min-height:84px;resize:vertical}
 .bub{max-width:78%;padding:9px 13px;border-radius:16px;background:#fff;border:1px solid var(--line);font-size:14px;align-self:flex-start;border-bottom-left-radius:5px;word-break:break-word}
 .bub.me{align-self:flex-end;background:var(--pine);color:#fff;border:none;border-bottom-right-radius:5px}
 .bub-time{display:block;font-size:10px;opacity:.65;margin-top:3px}
+.bub-tick{margin-left:3px;letter-spacing:-1px;color:rgba(255,255,255,.85);font-weight:700}
+.bub-tick.rd{color:#7fd8ff}
+.bub:not(.me) .bub-tick{color:inherit}
+.map-search{display:flex;gap:8px;margin:0 0 10px}
+.map-search .inp{flex:1}
 .thread-bar{position:sticky;bottom:0;display:flex;gap:8px;padding:10px 0;background:linear-gradient(transparent,var(--cream) 30%)}
 .thread-bar .inp{flex:1}
 .thread-head{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 12px;margin-bottom:8px}

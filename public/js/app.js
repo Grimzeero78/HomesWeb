@@ -101,7 +101,9 @@ async function refreshUnread() {
   buildNav();
   window.addEventListener('hashchange', route);
   route();
-  setInterval(refreshUnread, 6000);
+  // unread badge poll — paused entirely while the tab is hidden (visibilitychange re-checks
+  // the moment you come back). One of several changes that cut background server load ~75%.
+  setInterval(() => { if (!document.hidden) refreshUnread(); }, 8000);
   window.addEventListener('focus', refreshUnread);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshUnread(); });
   maybeStudentCaution();

@@ -237,14 +237,13 @@ async function viewCreate(id) {
         () => toast('Could not get your location — check location permission', true)
       );
     };
-    // place search (free OpenStreetMap service) — jump straight to a popular place
+    // place search: local gazetteer first (instant, always finds Chuka names), Nominatim bounded fallback
     const qIn = v.querySelector('#pick-q'), goBtn = v.querySelector('#pick-go');
     const doSearch = async () => {
       const raw = qIn.value.trim();
       if (!raw) return;
-      const q = /chuka|kenya|ndagani|mungoni/i.test(raw) ? raw : raw + ', Chuka, Kenya';
       goBtn.disabled = true; toast('Searching…');
-      const hit = await geocodePlace(q);
+      const hit = await searchPlaces(raw);
       goBtn.disabled = false;
       if (!hit) { toast('Place not found — try the map or GPS instead', true); return; }
       setPos(hit.lat, hit.lng);
@@ -256,7 +255,7 @@ async function viewCreate(id) {
     loadLeaflet().then(() => {
       box.innerHTML = '<div id="pm-inner" style="height:240px;border-radius:12px;overflow:hidden;border:1px solid var(--line)"></div>';
       const inner = box.querySelector('#pm-inner');
-      const map = osmMap(inner, { center: [L.lat ?? GATE.lat, L.lng ?? GATE.lng], zoom: L.lat ? 17 : 14 });
+      const map = osmMap(inner, { center: [L.lat ?? GATE.lat, L.lng ?? GATE.lng], zoom: L.lat ? 17 : 15 });
       let marker = null;
       // NOTE: `L` here is the wizard listing object (shadows Leaflet's global L) —
       // always use window.L for Leaflet calls inside viewCreate. This shadowing was

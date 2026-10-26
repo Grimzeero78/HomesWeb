@@ -17,7 +17,24 @@ const SECURITY = ['Guard', 'Gate lock', 'CCTV'];
 const FLOORS = ['Ground', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
 const AVAIL_OPTIONS = ['Available now', 'Within a week', 'Within a month', 'Next semester (January)', 'Pick a date…'];
 const REPORT_REASONS = ['Fake or scam listing', 'Unit is already taken', 'Wrong price or info', 'Poster is not the landlord', 'Misleading photos', 'Other'];
-const GATE = { lat: -0.3410, lng: 37.6420 };
+// REAL Chuka University Main Gate (verified: Wikipedia campus 0°19'10"S 37°39'30"E + OSM Ndagani
+// marketplace on Meru-Nairobi Highway, right at the campus frontage). The old value (-0.3410, 37.6420)
+// was ~3 km off — the map opened in empty countryside and walk times were wrong.
+const GATE = { lat: -0.3200, lng: 37.6588 };
+
+// Local gazetteer — verified OSM/Wikipedia coordinates. Rendered as permanent labels on every map
+// and searched FIRST (instant, always works) before falling back to Nominatim.
+const CHUKA_PLACES = [
+  { n: 'Main Gate',                lat: -0.3200,  lng: 37.6588,  big: 1 },
+  { n: 'Chuka University',         lat: -0.31944, lng: 37.65833 },
+  { n: 'Ndagani Centre',           lat: -0.32079, lng: 37.65956 },
+  { n: 'Ndagani Stage',            lat: -0.3207,  lng: 37.6590 },
+  { n: 'Chuka Town',               lat: -0.3315,  lng: 37.6495,  big: 1 },
+  { n: 'Marine',                   lat: -0.3233,  lng: 37.6648 },
+  { n: 'Slaughter',                lat: -0.3165,  lng: 37.6644 },
+  { n: 'Mungoni',                  lat: -0.3190,  lng: 37.6464 },
+  { n: 'Stadium Road',             lat: -0.3228,  lng: 37.6650 },
+];
 const BOOST = { amountKes: 200, days: 7 };
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -55,6 +72,25 @@ function amenityTags(l) {
   if (l.backup && l.backup !== 'None') t.push(l.backup + ' backup');
   if (parseSecurity(l.security).includes('Guard')) t.push('Guard');
   return t.slice(0, 3).map(x => `<span class="mini-tag">${esc(x)}</span>`).join('');
+}
+
+// Search a place: local gazetteer first (instant + always hits for Chuka names),
+// then Nominatim bounded to the Chuka box (so "Ndagani" can't resolve to some other town).
+async function searchPlaces(q) {
+  const raw = String(q || '').trim();
+  if (!raw) return null;
+  const low = raw.toLowerCase();
+  const local = CHUKA_PLACES.find(p => p.n.toLowerCase() === low)
+    || CHUKA_PLACES.find(p => p.n.toLowerCase().startsWith(low))
+    || CHUKA_PLACES.find(p => p.n.toLowerCase().includes(low));
+  if (local) return { lat: local.lat, lng: local.lng, local: true };
+  const box = 'viewbox=37.55%2C-0.25%2C37.80%2C-0.45&bounded=1';
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=en&countrycodes=ke&' + box + '&q=' + encodeURIComponent(raw), { headers: { Accept: 'application/json' } });
+    const j = await r.json();
+    if (j && j[0]) return { lat: +j[0].lat, lng: +j[0].lon, local: false };
+  } catch (e) { /* offline — fall through */ }
+  return null;
 }
 
 function waLink(num, text) {
