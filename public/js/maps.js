@@ -109,6 +109,10 @@ function makeMap(el, opts = {}) {
     <button type="button" class="gmap-btn" data-a="zo" aria-label="Zoom out">&minus;</button>
     <button type="button" class="gmap-btn wide" data-a="sat" aria-label="Toggle satellite view">Satellite</button>`;
   el.appendChild(ctl);
+  // control clicks must NEVER reach the map (otherwise tapping +/−/Satellite in
+  // the picker would fire a map click and quietly move the pin to the corner)
+  L.DomEvent.disableClickPropagation(ctl);
+  L.DomEvent.disableScrollPropagation(ctl);
   ctl.querySelector('[data-a="zi"]').onclick = () => map.zoomIn();
   ctl.querySelector('[data-a="zo"]').onclick = () => map.zoomOut();
   const satBtn = ctl.querySelector('[data-a="sat"]');
