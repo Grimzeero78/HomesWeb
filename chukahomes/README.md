@@ -1,2 +1,0 @@
-# chukahomes
-the website

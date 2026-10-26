@@ -297,3 +297,6 @@ textarea.inp{min-height:84px;resize:vertical}
   .thread{min-height:auto;height:calc(100dvh - 120px)}
   .auth-card{padding:30px}
 }
+
+/* fix: the hidden attribute must always win over display rules (stuck dark lightbox) */
+[hidden]{display:none!important}
