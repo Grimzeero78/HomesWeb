@@ -40,35 +40,47 @@ input,select,textarea{font-family:inherit;font-size:15px}
   color:var(--ink3);font-size:10.5px;font-weight:600;border-radius:10px}
 .bn-item svg{width:22px;height:22px}
 .bn-item.on{color:var(--pine)}
-.bn-dot{position:absolute;top:2px;right:calc(50% - 16px);width:9px;height:9px;border-radius:50%;background:var(--ember);border:2px solid #fff}
+.bn-badge{position:absolute;top:1px;right:calc(50% - 19px);min-width:17px;height:17px;padding:0 4px;border-radius:99px;
+  background:var(--ember);color:#fff;font-size:10px;font-weight:800;display:grid;place-items:center;border:2px solid #fff}
 
 /* side nav (desktop) */
 .sidenav{display:none}
 
 /* ---------- buttons / inputs ---------- */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:0 18px;border-radius:14px;
-  font-weight:700;font-size:14.5px;border:1.5px solid transparent;transition:transform .08s,background .15s,box-shadow .15s;white-space:nowrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 16px;border-radius:13px;
+  font-weight:700;font-size:14px;border:1.5px solid transparent;transition:transform .08s,background .15s,box-shadow .15s;white-space:nowrap}
 .btn:active{transform:scale(.98)}
 .btn-primary{background:var(--ember);color:#fff}.btn-primary:hover{background:var(--ember-deep)}
 .btn-green{background:var(--pine);color:#fff}.btn-green:hover{background:var(--pine-deep)}
 .btn-outline{background:#fff;border-color:var(--line);color:var(--ink)}
 .btn-outline:hover{border-color:var(--pine);color:var(--pine)}
 .btn-ghost{background:transparent;color:var(--ink2)}
-.btn-sm{min-height:36px;padding:0 12px;border-radius:10px;font-size:13px}
+.btn-sm{min-height:34px;padding:0 11px;border-radius:9px;font-size:12.5px}
 .btn-danger{background:#fdf0ec;color:var(--bad)}
 .btn[disabled]{opacity:.55;pointer-events:none}
 .btn-block{width:100%}
 
-.inp{width:100%;min-height:46px;padding:10px 13px;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);outline:none}
+/* icon sizing per context — ic() svgs carry an intrinsic 18px default; these override */
+.btn svg{width:17px;height:17px;flex:none}
+.btn-sm svg{width:15px;height:15px}
+.pill svg{width:12px;height:12px;flex:none}
+.dmeta svg{width:14px;height:14px;flex:none}
+.hint-t svg{width:13px;height:13px;vertical-align:-2px}
+.gal-nav svg{width:18px;height:18px}
+.back-m svg{width:18px;height:18px}
+.sec-h a svg{width:14px;height:14px}
+.owner-row .nm svg{width:14px;height:14px;color:var(--pine)}
+
+.inp{width:100%;min-height:44px;padding:10px 13px;border:1.5px solid var(--line);border-radius:12px;background:#fff;color:var(--ink);outline:none}
 .inp:focus{border-color:var(--pine)}
 textarea.inp{min-height:84px;resize:vertical}
 .lbl{display:block;font-size:12.5px;font-weight:700;color:var(--ink2);margin:14px 0 6px;letter-spacing:.02em}
 .hint-t{font-size:12.5px;color:var(--ink3);margin-top:5px}
 .seg{display:flex;background:#fff;border:1.5px solid var(--line);border-radius:12px;padding:3px;gap:3px}
-.seg button{flex:1;min-height:38px;border:0;border-radius:9px;background:transparent;font-weight:600;font-size:13.5px;color:var(--ink2)}
+.seg button{flex:1;min-height:36px;border:0;border-radius:9px;background:transparent;font-weight:600;font-size:13.5px;color:var(--ink2)}
 .seg button.on{background:var(--pine);color:#fff}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{padding:8px 13px;border-radius:999px;border:1.5px solid var(--line);background:#fff;font-size:13px;font-weight:600;color:var(--ink2)}
+.chip{padding:7px 12px;border-radius:999px;border:1.5px solid var(--line);background:#fff;font-size:12.5px;font-weight:600;color:var(--ink2)}
 .chip.on{background:var(--pine);border-color:var(--pine);color:#fff}
 .check{display:flex;align-items:center;gap:10px;padding:11px 2px;font-weight:600;font-size:14px;cursor:pointer}
 .check input{width:20px;height:20px;accent-color:var(--pine)}
@@ -124,6 +136,7 @@ textarea.inp{min-height:84px;resize:vertical}
 .notice{display:flex;gap:10px;padding:13px 14px;border-radius:14px;font-size:13.5px;font-weight:600}
 .notice-g{background:var(--mist);color:var(--pine-deep)}
 .notice-o{background:var(--ember-mist);color:var(--ember-deep)}
+.notice-r{background:#fdecea;color:var(--bad)}
 .notice svg{width:18px;height:18px;flex:none;margin-top:1px}
 .steps3{display:grid;gap:10px}
 .stepcard{display:flex;gap:12px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px}
@@ -217,6 +230,11 @@ textarea.inp{min-height:84px;resize:vertical}
 .photo-add svg{width:22px;height:22px}
 
 /* ---------- chat ---------- */
+.typing{align-self:flex-start;background:#fff;border:1px solid var(--line);border-radius:16px;border-bottom-left-radius:5px;padding:12px 14px;display:flex;gap:4px}
+.typing i{width:6px;height:6px;border-radius:3px;background:var(--ink3);animation:tp 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}
+.typing i:nth-child(3){animation-delay:.3s}
+@keyframes tp{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-4px);opacity:1}}
 .conv-row{display:flex;gap:12px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 13px;margin-bottom:8px}
 .conv-av{position:relative}
 .conv-un{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:99px;background:var(--ember);color:#fff;font-size:10.5px;font-weight:800;display:grid;place-items:center;padding:0 5px;border:2px solid var(--cream)}
@@ -253,6 +271,30 @@ textarea.inp{min-height:84px;resize:vertical}
 .doc-thumbs{display:flex;gap:8px;margin-top:10px}
 .doc-thumbs img{width:84px;height:64px;object-fit:cover;border-radius:9px;border:1px solid var(--line);cursor:pointer}
 
+/* ---------- profile settings rows ---------- */
+.plabel{font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin:18px 2px 8px}
+.prowbox{background:#fff;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh)}
+.prow{display:flex;align-items:center;gap:13px;padding:13px 15px;border-bottom:1px solid var(--line);cursor:pointer;background:var(--card);width:100%;text-align:left;font-family:inherit;font-size:inherit}
+.prow:last-child{border-bottom:0}
+.prow:hover{background:rgba(14,90,51,.04)}
+.prow .mid{flex:1;min-width:0}
+.prow b{font-size:14px;display:block}
+.prow small{font-size:12px;color:var(--ink3);display:block;margin-top:1px}
+.prow>svg{width:19px;height:19px;flex:none;color:var(--pine)}
+.prow>svg.chev{width:16px;height:16px;color:var(--ink3)}
+.prow.danger>svg{color:var(--bad)}
+.prow.danger b{color:var(--bad)}
+
+/* ---------- splash ---------- */
+#splash{position:fixed;inset:0;z-index:200;background:linear-gradient(160deg,var(--pine),var(--pine-deep));display:grid;place-items:center;
+  transition:opacity .45s,visibility .45s;animation:splashAway .4s 2.8s forwards}
+#splash.off{opacity:0;visibility:hidden}
+.splash-card{display:flex;flex-direction:column;align-items:center;gap:12px}
+.splash-mark{display:grid;place-items:center;width:64px;height:64px;border-radius:18px;background:#fff;color:var(--pine);font-family:var(--disp);font-weight:800;font-size:26px}
+.splash-word{font-family:var(--disp);font-weight:600;font-size:22px;color:#fff;letter-spacing:.02em}
+.splash-word b{color:#ffd9b8;font-weight:800}
+@keyframes splashAway{to{opacity:0;visibility:hidden}}
+
 /* ---------- modal / toast / lightbox ---------- */
 .modal-ov{position:fixed;inset:0;z-index:90;background:rgba(12,24,16,.45);display:flex;align-items:flex-end;justify-content:center;padding:0}
 .modal{background:#fff;width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:20px;max-height:86dvh;overflow-y:auto;animation:up .22s}
@@ -275,7 +317,7 @@ textarea.inp{min-height:84px;resize:vertical}
   .sl svg{width:20px;height:20px}
   .sl:hover{background:var(--cream);color:var(--ink)}
   .sl.on{background:var(--pine);color:#fff}
-  .sl .bn-dot{position:static;border:none;margin-left:auto}
+  .sl .bn-badge{position:static;border:none;margin-left:auto}
   .side-foot{border-top:1px solid var(--line);padding-top:12px;font-size:12.5px;color:var(--ink2)}
   .bottomnav{display:none}
   .topbar{display:none}

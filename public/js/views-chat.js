@@ -26,6 +26,7 @@ async function viewChats() {
             <span class="conv-listing">${kes(c.lrent)}/${perShort(c.lperiod)}</span></div>
         </div>
       </a>`).join('');
+    refreshUnread();
   };
   await load();
   clearInterval(chatTimer);
@@ -50,10 +51,11 @@ async function viewThread(id) {
       <div style="flex:1;min-width:0">
         <div style="font-weight:800;font-size:14.5px">${esc(other.name || other.username)}
           ${other.verify_status === 'APPROVED' ? `<span class="vbadge">${ic('shield')}</span>` : ''}</div>
-        <div style="font-size:11.5px;color:var(--ink2)">${esc(listing.title)} · ${kes(listing.rent)}/${perShort(listing.period)}</div>
+        <div style="font-size:11.5px;color:var(--ink2)">${esc(listing.title)} · ${kes(listing.rent)}/${perShort(listing.period)}${(state.user.role !== 'STUDENT' && other.role === 'STUDENT' && other.regNo) ? ' · Reg № ' + esc(other.regNo) : ''}</div>
       </div>
       ${other.phone ? `<a class="btn btn-green btn-sm" href="tel:${esc(other.phone)}">${ic('phone')}</a>
       <a class="btn btn-primary btn-sm" target="_blank" rel="noopener" href="${waLink(other.phone, 'Hi! About “' + listing.title + '” on ChukaHomes…')}">${ic('wa')}</a>` : ''}
+      <button class="back-m" id="th-report" title="Report" style="flex:none">${ic('flag')}</button>
     </div>
     <div class="thread">
       <div class="thread-msgs" id="th-msgs"></div>
@@ -65,6 +67,7 @@ async function viewThread(id) {
     <p class="hint-t" style="margin-top:8px">${ic('shield')} Agree on a viewing first. Never send money before you have seen the room.</p>`;
 
   v.querySelector('#th-back').onclick = () => { location.hash = '#/chats'; };
+  v.querySelector('#th-report').onclick = () => openReport(info.listing.id || info.conv.listingId);
 
   const msgsEl = v.querySelector('#th-msgs');
   const inp = v.querySelector('#th-inp');
@@ -77,12 +80,27 @@ async function viewThread(id) {
 
   async function poll(initial) {
     const r = await api('/convs/' + id + '/messages?after=' + lastId);
-    if (!r.ok || !r.items.length) return;
+    if (!r.ok) return;
     const nearBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 160;
-    r.items.forEach(m => { msgsEl.insertAdjacentHTML('beforeend', bubble(m)); lastId = Math.max(lastId, m.id); });
-    if (initial || nearBottom) msgsEl.scrollTop = msgsEl.scrollHeight;
-    if (r.items.length) refreshUnread();
+    if (r.items.length) {
+      r.items.forEach(m => { msgsEl.insertAdjacentHTML('beforeend', bubble(m)); lastId = Math.max(lastId, m.id); });
+      if (initial || nearBottom) msgsEl.scrollTop = msgsEl.scrollHeight;
+    }
+    // typing indicator (other side typed within the last 6s)
+    const ex = msgsEl.querySelector('.typing');
+    if (r.otherTyping && !ex) {
+      msgsEl.insertAdjacentHTML('beforeend', '<div class="typing"><i></i><i></i><i></i></div>');
+      if (initial || nearBottom) msgsEl.scrollTop = msgsEl.scrollHeight;
+    } else if (!r.otherTyping && ex) ex.remove();
+    refreshUnread();
   }
+
+  // tell the other side we are typing (throttled to one ping per 2.5s)
+  let lastTypingSent = 0;
+  inp.addEventListener('input', () => {
+    const now = Date.now();
+    if (now - lastTypingSent > 2500) { lastTypingSent = now; api('/convs/' + id + '/typing', { body: {} }); }
+  });
 
   async function send() {
     const text = inp.value.trim();

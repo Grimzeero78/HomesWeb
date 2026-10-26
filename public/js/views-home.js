@@ -56,6 +56,15 @@ async function viewHome() {
       <h3 style="color:#fff">Have a vacant room?</h3>
       <p style="font-size:13.5px;color:#d8e8dd;margin-bottom:14px">Post it on ChukaHomes and reach thousands of Chuka students. First 2 listings are free.</p>
       <a class="btn btn-primary" href="#/register">List your property</a></div>`;
+  } else if (state.user.role === 'LANDLORD') {
+    cta.innerHTML = `<div class="sec-block" style="background:var(--pine);color:#fff;border:none">
+      <h3 style="color:#fff">Get more students to your rooms</h3>
+      <p style="font-size:13.5px;color:#d8e8dd;margin-top:8px"><b>1. Get verified</b> — upload your ID and ownership proof in your Profile to earn the green badge and post up to 5 listings instead of 2.</p>
+      <p style="font-size:13.5px;color:#d8e8dd;margin-bottom:14px"><b>2. Boost</b> — KES ${BOOST.amountKes} pins a listing at the top of search results and this home page for ${BOOST.days} days, with an orange BOOSTED badge.</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${state.user.verifyStatus !== 'APPROVED' ? `<a class="btn btn-primary" href="#/profile">${ic('shield')} Get verified</a>` : ''}
+        <a class="btn btn-outline" href="#/mylistings">${ic('doc')} My listings</a>
+      </div></div>`;
   }
 }
 

@@ -52,7 +52,7 @@ function buildNav(active) {
     const path = href === '#/' ? '#/' : href;
     return `<a class="bn-item ${cur === key ? 'on' : ''}" href="${path}" data-nav="${key}">
       ${ic(key === 'home' ? 'home' : key === 'search' ? 'search' : key === 'map' ? 'pin' : key === 'chats' ? 'chat' : 'user')}
-      <span>${label}</span>${key === 'chats' ? '<span class="bn-dot" id="nav-dot" hidden></span>' : ''}</a>`;
+      <span>${label}</span>${key === 'chats' ? '<span class="bn-badge" id="nav-dot" hidden></span>' : ''}</a>`;
   }).join('');
 
   const sn = document.getElementById('sidenav-links');
@@ -60,7 +60,7 @@ function buildNav(active) {
     ...(state.user && state.user.role === 'LANDLORD' ? [['#/mylistings', 'doc', 'My listings'], ['#/new', 'plus', 'Post a listing']] : []),
     ...(state.user ? [['#/favorites', 'heart', 'Favourites']] : [])];
   sn.innerHTML = links.map(([href, key, label]) =>
-    `<a class="sl ${cur === key ? 'on' : ''}" href="${href}" data-nav="${key}">${ic(key)}<span>${label}</span>${key === 'chats' ? '<span class="bn-dot" id="snav-dot" hidden></span>' : ''}</a>`).join('');
+    `<a class="sl ${cur === key ? 'on' : ''}" href="${href}" data-nav="${key}">${ic(key)}<span>${label}</span>${key === 'chats' ? '<span class="bn-badge" id="snav-dot" hidden></span>' : ''}</a>`).join('');
 
   const ta = document.getElementById('top-actions');
   const foot = document.getElementById('sidenav-foot');
@@ -83,7 +83,12 @@ async function refreshUnread() {
   if (!state.user) return;
   const r = await api('/unread');
   if (!r.ok) return;
-  document.querySelectorAll('#nav-dot, #snav-dot').forEach(d => { if (d) d.hidden = !r.n; });
+  const n = Number(r.n || 0);
+  document.querySelectorAll('#nav-dot, #snav-dot').forEach(d => {
+    if (!d) return;
+    if (n > 0) { d.textContent = n > 9 ? '9+' : n; d.hidden = false; }
+    else d.hidden = true;
+  });
 }
 
 // ---------- boot ----------
@@ -96,7 +101,12 @@ async function refreshUnread() {
   buildNav();
   window.addEventListener('hashchange', route);
   route();
-  setInterval(refreshUnread, 10000);
+  setInterval(refreshUnread, 6000);
+  window.addEventListener('focus', refreshUnread);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshUnread(); });
+  maybeStudentCaution();
+  const sp = document.getElementById('splash');
+  if (sp) setTimeout(() => { sp.classList.add('off'); setTimeout(() => sp.remove(), 600); }, 750);
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }

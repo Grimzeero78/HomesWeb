@@ -21,7 +21,8 @@ async function viewListing(id) {
   const canContact = !!state.user;
   const verified = l.ownerVerify === 'APPROVED';
   const boosted = l.boostedUntil && l.boostedUntil > Date.now();
-  const walkTxt = l.walkGate ? `${l.walkGate} min walk to Main Gate` : (walkMinutes(l.lat, l.lng) ? walkMinutes(l.lat, l.lng) + ' min walk to Main Gate' : '—');
+  const walkMin = l.walkGate || walkMinutes(l.lat, l.lng);
+  const walkTxt = walkMin ? `${walkMin} min walk to Main Gate` : 'Not pinned — ask in chat';
   const coords = l.lat != null && l.lng != null;
   const gmapsLink = coords ? `https://www.google.com/maps/search/?api=1&query=${l.lat},${l.lng}` : null;
   const dirLink = coords ? `https://www.google.com/maps/dir/?api=1&destination=${l.lat},${l.lng}` : null;
@@ -32,6 +33,8 @@ async function viewListing(id) {
   v.innerHTML = `
   <div class="detail-cols">
     <div class="detail-main">
+      ${r.isOwner && !boosted ? `<div class="notice notice-o" style="margin-bottom:10px">${ic('bolt')}<span><b>This is your listing.</b> Get seen first — <a href="#/boost/${l.id}" style="text-decoration:underline">Boost it for KES ${BOOST.amountKes} / ${BOOST.days} days</a> and it sits at the top of search and the home page.</span></div>` : ''}
+      ${r.isOwner && !verified ? `<div class="notice notice-g" style="margin-bottom:10px">${ic('shield')}<span>Earn the green <b>Verified landlord</b> badge and post up to 5 listings — <a href="#/profile" style="text-decoration:underline">verify in your Profile</a>.</span></div>` : ''}
       ${photos.length ? `
       <div class="gallery">
         <span class="wm" style="z-index:2"></span>
@@ -45,7 +48,7 @@ async function viewListing(id) {
       <div class="dhead">
         <div class="dprice">${kes(l.rent)}<span> /${perShort(l.period).replace('sem', 'semester').replace('yr', 'year').replace('mo', 'month')}</span></div>
         <div class="dtitle">${esc(l.title)}</div>
-        <div class="dmeta">${ic('pin')} ${esc(l.area)}${l.landmark ? ' · ' + esc(l.landmark) : ''} · ${walkTxt}</div>
+        <div class="dmeta">${ic('pin')} ${esc(l.area)}${l.landmark ? ' · ' + esc(l.landmark) : ''}${walkMin ? ' · ' + walkMin + ' min walk' : ''}</div>
         <div style="display:flex;gap:7px;margin-top:9px;flex-wrap:wrap">
           ${boosted ? `<span class="pill pill-o">${ic('bolt')}Boosted</span>` : ''}
           ${verified ? `<span class="pill pill-g">${ic('shield')}Verified landlord</span>` : ''}
@@ -57,6 +60,7 @@ async function viewListing(id) {
           <button class="btn btn-outline btn-sm" id="btn-share">${ic('send')} Share</button>
           <button class="btn btn-outline btn-sm" id="btn-report">${ic('flag')} Report</button>
         </div>
+        ${!r.isOwner ? `<div class="notice notice-r" style="margin-top:12px">${ic('shield')}<span><b>Never pay before viewing.</b> Visit the house and meet the landlord or caretaker in person before sending any deposit — M-Pesa or cash.</span></div>` : ''}
       </div>
 
       <div class="sec-block"><h3>Key facts</h3><div class="dgrid">
@@ -77,7 +81,7 @@ async function viewListing(id) {
           <a class="btn btn-outline btn-sm" target="_blank" rel="noopener" href="${dirLink}">${ic('send')} Directions</a>
         </div>` : `<p class="hint-t">The landlord has not pinned this property on the map yet. Ask for directions in the chat.</p>`}
         <div style="margin-top:10px">
-          ${kv('Walking to Main Gate', walkTxt)}
+          ${kv('Walking to Main Gate', walkMin ? walkMin + ' min' : 'Not set')}
           ${l.walkStage ? kv('Walking to matatu stage', l.walkStage + ' min') : ''}
         </div>
       </div>
@@ -178,20 +182,7 @@ async function viewListing(id) {
     if (navigator.share) { try { await navigator.share({ title: l.title, url }); } catch {} }
     else { try { await navigator.clipboard.writeText(url); toast('Link copied'); } catch {} }
   };
-  v.querySelector('#btn-report').onclick = () => {
-    if (!state.user) { location.hash = '#/login'; return; }
-    modal(`<h3>Report this listing</h3>
-      <label class="lbl">Reason</label>
-      <select class="inp" id="rp-reason">${REPORT_REASONS.map(x => `<option>${esc(x)}</option>`).join('')}</select>
-      <label class="lbl">Details (optional)</label>
-      <textarea class="inp" id="rp-note" placeholder="Tell us what is wrong…"></textarea>
-      <button class="btn btn-primary btn-block" style="margin-top:14px" id="rp-send">Send report</button>`,
-      m => m.querySelector('#rp-send').onclick = async () => {
-        const res = await api('/listings/' + l.id + '/report', { body: { reason: m.querySelector('#rp-reason').value, note: m.querySelector('#rp-note').value } });
-        closeModal();
-        toast(res.ok ? 'Report sent. Our team will review it.' : res.error, !res.ok);
-      });
-  };
+  v.querySelector('#btn-report').onclick = () => openReport(l.id);
   v.querySelector('#btn-msg').onclick = async () => {
     if (!state.user) { location.hash = '#/login'; return; }
     const res = await api('/convs', { body: { listingId: l.id } });

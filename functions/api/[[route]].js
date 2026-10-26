@@ -169,6 +169,8 @@ CREATE TABLE IF NOT EXISTS conversations (
   landlordId INTEGER NOT NULL,
   lastMsg TEXT NOT NULL DEFAULT '',
   lastAt INTEGER NOT NULL DEFAULT 0,
+  typingAt INTEGER,
+  typingBy INTEGER,
   createdAt INTEGER NOT NULL,
   UNIQUE(listingId, studentId)
 );
@@ -218,14 +220,26 @@ let schemaReady = null;
 async function ensureSchema(env) {
   if (!schemaReady) {
     schemaReady = (async () => {
+      let ver = 0;
       try {
         const r = await env.DB.prepare("SELECT value FROM settings WHERE key = 'schema_ver'").first();
-        if (r && r.value === '1') return;
-      } catch (e) { /* tables missing — create them */ }
-      const stmts = SCHEMA.split('\n').filter(l => !l.trim().startsWith('--')).join('\n')
-        .split(';').map(s => s.trim()).filter(Boolean);
-      for (const st of stmts) await env.DB.prepare(st).run();
-      await env.DB.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES ('schema_ver','1')").run();
+        if (r) ver = Number(r.value) || 0;
+      } catch (e) { /* settings table missing — fresh install */ }
+      if (ver < 1) {
+        const stmts = SCHEMA.split('\n').filter(l => !l.trim().startsWith('--')).join('\n')
+          .split(';').map(s => s.trim()).filter(Boolean);
+        for (const st of stmts) await env.DB.prepare(st).run();
+      }
+      if (ver < 2) {
+        // v2: chat typing indicator columns + clean up legacy prototype area names
+        const mig = [
+          'ALTER TABLE conversations ADD COLUMN typingAt INTEGER',
+          'ALTER TABLE conversations ADD COLUMN typingBy INTEGER',
+          "UPDATE listings SET area = 'Ndagani' WHERE area NOT IN ('Ndagani','Marine','Slaughter','Mungoni')",
+        ];
+        for (const st of mig) { try { await env.DB.prepare(st).run(); } catch (e) { /* column exists */ } }
+      }
+      await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_ver','2')").run();
     })().catch(e => { schemaReady = null; throw e; });
   }
   await schemaReady;
@@ -698,9 +712,10 @@ export async function onRequest(context) {
           .bind(c.studentId === u.id ? c.landlordId : c.studentId).first();
         await env.DB.prepare('UPDATE messages SET readAt = ? WHERE convId = ? AND senderId != ? AND readAt IS NULL')
           .bind(Date.now(), c.id, u.id).run();
+        const otherTyping = !!(c.typingBy && c.typingBy !== u.id && c.typingAt && Date.now() - c.typingAt < 6000);
         return ok({
           conv: { id: c.id, listingId: c.listingId },
-          listing: l, other: pubUser(other)
+          listing: l, other: pubUser(other), otherTyping
         });
       }
       // messages
@@ -713,11 +728,11 @@ export async function onRequest(context) {
           const rows = (await env.DB.prepare(
             `SELECT * FROM (SELECT * FROM messages WHERE convId = ? AND id > ? ORDER BY id DESC LIMIT 300) ORDER BY id ASC`)
             .bind(cid, after).all()).results || [];
-          if (after === 0) {
-            await env.DB.prepare('UPDATE messages SET readAt = ? WHERE convId = ? AND senderId != ? AND readAt IS NULL')
-              .bind(Date.now(), cid, u.id).run();
-          }
-          return ok({ items: rows, me: u.id });
+          // the viewer is looking at the thread — mark everything read
+          await env.DB.prepare('UPDATE messages SET readAt = ? WHERE convId = ? AND senderId != ? AND readAt IS NULL')
+            .bind(Date.now(), cid, u.id).run();
+          const otherTyping = !!(c.typingBy && c.typingBy !== u.id && c.typingAt && Date.now() - c.typingAt < 6000);
+          return ok({ items: rows, me: u.id, otherTyping });
         }
         if (method === 'POST') {
           if (!rateLimit('msg:' + u.id, 30, 60_000)) return tooMany();
@@ -726,10 +741,20 @@ export async function onRequest(context) {
           if (!text) return bad('Type a message');
           const r = await env.DB.prepare('INSERT INTO messages (convId, senderId, text, createdAt) VALUES (?,?,?,?)')
             .bind(cid, u.id, text, Date.now()).run();
-          await env.DB.prepare('UPDATE conversations SET lastAt = ?, lastMsg = ? WHERE id = ?')
+          await env.DB.prepare('UPDATE conversations SET lastAt = ?, lastMsg = ?, typingAt = NULL, typingBy = NULL WHERE id = ?')
             .bind(Date.now(), text.slice(0, 80), cid).run();
           return ok({ id: r.meta.last_row_id });
         }
+      }
+      // typing ping (throttled client-side; membership required)
+      if (seg[1] && seg[2] === 'typing' && method === 'POST') {
+        const cid = N(seg[1]);
+        const c = await env.DB.prepare('SELECT * FROM conversations WHERE id = ?').bind(cid).first();
+        if (!c || (c.studentId !== u.id && c.landlordId !== u.id)) return bad('Conversation not found', 404);
+        if (!rateLimit('typ:' + u.id, 30, 60_000)) return tooMany();
+        await env.DB.prepare('UPDATE conversations SET typingAt = ?, typingBy = ? WHERE id = ?')
+          .bind(Date.now(), u.id, cid).run();
+        return ok({});
       }
     }
 

@@ -82,6 +82,7 @@ function ic(name, cls) {
     x: '<path d="M6 6l12 12M18 6 6 18"/>',
     gear: '<circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1"/>',
     out: '<path d="M9 4H5v16h4"/><path d="M14 8l4 4-4 4M18 12H8"/>',
+    chev: '<path d="m9 6 6 6-6 6"/>',
     photo: '<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="m4.5 17.5 5-5 3.5 3.5 3-3 3.5 3.5"/>',
     doc: '<path d="M6 2.5h8L19 8v13.5H6z"/><path d="M13.5 2.5V8H19"/>',
     wa: '<path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.7-1.2A9 9 0 1 0 12 3z"/><path d="M8.8 9.2c.6 2.7 3.3 5.3 6 6l1.3-1.5-2-1.2-1 .7a6.4 6.4 0 0 1-2.3-2.3l.7-1-1.2-2-1.5 1.3z"/>',
@@ -90,7 +91,9 @@ function ic(name, cls) {
     send: '<path d="M21 3 10.5 13.5M21 3l-7 18-3.5-7.5L3 10l18-7z"/>',
     star: '<path d="m12 3 2.7 5.8 6.3.8-4.6 4.4 1.2 6.2-5.6-3.1L6.4 20l1.2-6.2L3 9.6l6.3-.8L12 3z"/>',
   };
-  return `<svg class="${cls || ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
+  // width/height attrs = safe intrinsic default (18px); CSS rules override per context.
+  // Without these, an SVG with only a viewBox blows up to fill flex/grid containers.
+  return `<svg class="${cls || ''}" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
 }
 
 // ---------- toast / modal / lightbox ----------
@@ -120,6 +123,39 @@ function confirmDlg(title, text, okLabel, cb, danger) {
       <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" style="flex:1" id="cf-ok">${esc(okLabel || 'Yes')}</button>
     </div>`, m => m.querySelector('#cf-ok').addEventListener('click', () => { closeModal(); cb(); }));
 }
+// report modal shared by listing page + chat thread
+function openReport(listingId) {
+  if (!state.user) { location.hash = '#/login'; return; }
+  modal(`<h3>Report this listing</h3>
+    <label class="lbl">Reason</label>
+    <select class="inp" id="rp-reason">${REPORT_REASONS.map(x => `<option>${esc(x)}</option>`).join('')}</select>
+    <label class="lbl">Details (optional)</label>
+    <textarea class="inp" id="rp-note" placeholder="Tell us what is wrong…"></textarea>
+    <button class="btn btn-primary btn-block" style="margin-top:14px" id="rp-send">Send report</button>`,
+    m => m.querySelector('#rp-send').onclick = async () => {
+      const res = await api('/listings/' + listingId + '/report', { body: { reason: m.querySelector('#rp-reason').value, note: m.querySelector('#rp-note').value } });
+      closeModal();
+      toast(res.ok ? 'Report sent. Our team will review it.' : res.error, !res.ok);
+    });
+}
+
+// one-time scam warning for students (port of the prototype caution modal)
+function maybeStudentCaution() {
+  let acked = false;
+  try { acked = !!localStorage.getItem('ch_caution'); } catch (e) { return; }
+  if (acked || !state.user || state.user.role !== 'STUDENT') return;
+  modal(`<div style="text-align:center;padding:4px 2px">
+    <div style="width:60px;height:60px;margin:0 auto 12px;border-radius:18px;background:var(--ember-mist);color:var(--ember-deep);display:grid;place-items:center">${ic('shield')}</div>
+    <h3 style="font-family:var(--disp);font-size:19px">Before you pay anyone</h3>
+    <p style="font-size:13.5px;color:var(--ink2);line-height:1.55;margin:8px 0 12px">ChukaHomes never handles your rent. <b>Never send money — M-Pesa or cash — before you have physically visited the house and met the landlord or caretaker in person.</b></p>
+    <div class="notice notice-r" style="text-align:left;margin-bottom:14px">${ic('flag')}<span><b>Scam signs:</b> a "viewing fee", refusing to meet in person, or pressure to pay before you have seen the room.</span></div>
+    <button class="btn btn-green btn-block" id="ca-ok">I understand — show me rooms</button>
+  </div>`, m => m.querySelector('#ca-ok').onclick = () => {
+    try { localStorage.setItem('ch_caution', '1'); } catch (e) {}
+    closeModal();
+  });
+}
+
 function lightbox(src) {
   const lb = document.getElementById('lightbox');
   document.getElementById('lightbox-img').src = src;
@@ -131,7 +167,8 @@ function lightbox(src) {
 function listingCard(l) {
   const boosted = l.boostedUntil && l.boostedUntil > Date.now();
   const verified = l.ownerVerified === 'APPROVED';
-  const walk = l.walkGate ? `${l.walkGate} min walk` : (walkMinutes(l.lat, l.lng) ? walkMinutes(l.lat, l.lng) + ' min walk' : esc(l.landmark || l.area));
+  const walkMin = l.walkGate || walkMinutes(l.lat, l.lng);
+  const locTxt = [esc(l.area), walkMin ? walkMin + ' min walk' : (l.landmark ? esc(l.landmark) : '')].filter(Boolean).join(' · ');
   return `<a class="card" href="#/listing/${l.id}">
     <div class="cph">${l.thumb ? `<img loading="lazy" src="${l.thumb}" alt="${esc(l.title)}">` : `<div class="cph-empty">${ic('photo')}</div>`}
       <span class="wm"></span>
@@ -140,7 +177,7 @@ function listingCard(l) {
     <div class="cbody">
       <div class="cprice">${kes(l.rent)}<span>/${perShort(l.period)}</span></div>
       <div class="ctitle">${esc(l.title)}</div>
-      <div class="cmeta">${ic('pin')}<span>${esc(l.area)} · ${walk}</span></div>
+      <div class="cmeta">${ic('pin')}<span>${locTxt}</span></div>
       <div class="ctags">${amenityTags(l)}</div>
       <div class="cfoot"><span>${verified ? `<span class="vbadge">${ic('shield')}Verified</span>` : ''}</span><span>${l.views || 0} views · ${timeAgo(l.createdAt)}</span></div>
     </div></a>`;

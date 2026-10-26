@@ -8,6 +8,7 @@ async function afterAuth(res) {
   buildNav();
   toast('Welcome, ' + (res.user.name || res.user.username) + '!');
   authRedirect();
+  maybeStudentCaution();
 }
 
 function viewAuth(tab) {
@@ -134,6 +135,11 @@ async function viewSetup() {
   };
 }
 
+// settings-style row (port of the prototype prow)
+function prow(icon, title, sub, href) {
+  return `<a class="prow" href="${href}">${ic(icon)}<span class="mid"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>${ic('chev', 'chev')}</a>`;
+}
+
 // ---------- profile ----------
 async function viewProfile() {
   if (!state.user) { location.hash = '#/login'; return; }
@@ -157,14 +163,17 @@ async function viewProfile() {
 
     ${isLandlord ? landlordVerifyCard(u) : ''}
 
-    <div class="auth-card" style="margin-top:14px">
-      <h3 class="font-disp" style="font-size:16px">Quick links</h3>
-      <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
-        ${isLandlord ? `<a class="btn btn-outline" href="#/mylistings">${ic('home')} My listings</a><a class="btn btn-outline" href="#/new">${ic('plus')} Post a new listing</a>` : ''}
-        <a class="btn btn-outline" href="#/favorites">${ic('heart')} Favourites</a>
-        <a class="btn btn-outline" href="#/privacy">${ic('shield')} Privacy & safety</a>
-      </div>
-      <button class="btn btn-danger btn-block" id="pf-out" style="margin-top:14px">${ic('out')} Sign out</button>
+    <div class="plabel">${isLandlord ? 'Landlord tools' : 'Quick actions'}</div>
+    <div class="prowbox">
+      ${isLandlord ? prow('doc', 'My listings', 'Edit, mark taken, or boost your rooms', '#/mylistings')
+        + prow('plus', 'Post a new listing', 'Free plan: 2 listings · verified: 5', '#/new') : ''}
+      ${u.role === 'ADMIN' ? prow('gear', 'Admin panel', 'Verifications, boosts, reports, users', '#/admin') : ''}
+      ${prow('heart', 'Favourites', 'Rooms you saved for later', '#/favorites')}
+      ${prow('shield', 'Privacy & safety', 'How ChukaHomes handles your data', '#/privacy')}
+    </div>
+    <div class="plabel">Settings</div>
+    <div class="prowbox">
+      <button class="prow danger" id="pf-out">${ic('out')}<span class="mid"><b>Sign out</b><small>End this session on this device</small></span></button>
     </div>`;
 
   v.querySelector('#pf-save').onclick = async () => {

@@ -10,9 +10,10 @@ async function viewMyListings() {
   const boosted = l => l.boostedUntil && l.boostedUntil > Date.now();
 
   v.innerHTML = `<div class="sec-h"><h2>My listings</h2><a href="#/new">${ic('plus')} New</a></div>
-    <div class="notice notice-g" style="margin-bottom:14px">${ic('shield')}<span>${state.user.verifyStatus === 'APPROVED'
+    <div class="notice notice-g" style="margin-bottom:10px">${ic('shield')}<span>${state.user.verifyStatus === 'APPROVED'
       ? 'Verified account: up to 5 listings.'
       : 'Free plan: 2 listings. Get verified in your Profile to post up to 5.'}</span></div>
+    <div class="notice notice-o" style="margin-bottom:14px">${ic('bolt')}<span><b>Boost gets you seen:</b> KES ${BOOST.amountKes} pins a listing at the top of search and the home page for ${BOOST.days} days. Tap <b>Boost</b> on any listing below.</span></div>
     ${items.length ? items.map(l => `
       <div class="row-card">
         <div class="row-top">
