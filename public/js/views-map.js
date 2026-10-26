@@ -125,13 +125,13 @@ async function viewMap() {
 
     // ---- permanent area labels (verified coordinates — always visible, no geocoder needed) ----
     CHUKA_PLACES.forEach(p => {
-      if (p.n === 'Main Gate') return; // drawn separately below
+      if (p.hide) return; // search-only entries (too close to another label)
       L.marker([p.lat, p.lng], { icon: landIcon(p.n), keyboard: false, interactive: false, zIndexOffset: 100 }).addTo(map);
     });
 
-    // Chuka University Main Gate — exact, always shown
+    // Chuka University Main Gate — exact, always shown (tooltip points right, away from labels)
     L.marker([GATE.lat, GATE.lng], { icon: gateIcon(), keyboard: false, zIndexOffset: 500 }).addTo(map)
-      .bindTooltip('Chuka University Main Gate', { permanent: true, direction: 'bottom', offset: [0, 8], className: 'gate-tip' });
+      .bindTooltip('Chuka University Main Gate', { permanent: true, direction: 'right', offset: [12, 0], className: 'gate-tip' });
 
     const bounds = [[GATE.lat, GATE.lng]];
     CHUKA_PLACES.forEach(p => bounds.push([p.lat, p.lng]));

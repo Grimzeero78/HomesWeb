@@ -26,9 +26,9 @@ const GATE = { lat: -0.3200, lng: 37.6588 };
 // and searched FIRST (instant, always works) before falling back to Nominatim.
 const CHUKA_PLACES = [
   { n: 'Main Gate',                lat: -0.3200,  lng: 37.6588,  big: 1 },
-  { n: 'Chuka University',         lat: -0.31944, lng: 37.65833 },
+  { n: 'Chuka University',         lat: -0.31944, lng: 37.65833, hide: 1 },  // search-only (label collides with Main Gate tooltip)
   { n: 'Ndagani Centre',           lat: -0.32079, lng: 37.65956 },
-  { n: 'Ndagani Stage',            lat: -0.3207,  lng: 37.6590 },
+  { n: 'Ndagani Stage',            lat: -0.3207,  lng: 37.6590,  hide: 1 },  // search-only (50 m from Ndagani Centre)
   { n: 'Chuka Town',               lat: -0.3315,  lng: 37.6495,  big: 1 },
   { n: 'Marine',                   lat: -0.3233,  lng: 37.6648 },
   { n: 'Slaughter',                lat: -0.3165,  lng: 37.6644 },
