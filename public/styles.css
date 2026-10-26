@@ -348,14 +348,30 @@ textarea.inp{min-height:84px;resize:vertical}
 /* fix: the hidden attribute must always win over display rules (stuck dark lightbox) */
 [hidden]{display:none!important}
 
-/* ---------- free maps (Leaflet + OpenStreetMap) ---------- */
-.pin-price{display:grid;place-items:center;height:26px;padding:0 8px;border-radius:8px;background:#1b7a47;color:#fff;font:800 10.5px/1 'Instrument Sans',system-ui,sans-serif;border:2px solid #fff;box-shadow:0 2px 8px rgba(8,14,10,.35);white-space:nowrap}
-.pin-price.pin-b{background:#e0620f}
-.pin-gate{display:grid;place-items:center;height:22px;padding:0 10px;border-radius:11px;background:#0e5a33;color:#fff;font:800 10px/1 'Instrument Sans',system-ui,sans-serif;border:2px solid #fff;box-shadow:0 2px 8px rgba(8,14,10,.35);white-space:nowrap}
-.pin-pick{width:18px;height:18px;border-radius:50%;background:#e0620f;border:3px solid #fff;box-shadow:0 2px 8px rgba(8,14,10,.4)}
-.gate-tip{background:#fff;border:1px solid var(--line);box-shadow:0 2px 6px rgba(8,14,10,.18);font-weight:700;font-size:10px;color:#0a3d24;padding:2px 7px;border-radius:6px}
-.gate-tip::before{display:none}
-.leaflet-container{font-family:'Instrument Sans',system-ui,sans-serif}
+/* ---------- Google Maps embed wrapper (keyless) ---------- */
+.gmap{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#e8edf0}
+.gmap iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+.gmap-ov{position:absolute;inset:0;z-index:2;touch-action:none;cursor:grab}
+.gmap-ov.grabbing{cursor:grabbing}
+.gmap-ctl{position:absolute;top:9px;right:9px;z-index:3;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.gmap-btn{min-width:34px;height:34px;padding:0 9px;border-radius:9px;border:1px solid var(--line);background:#fff;
+  font:800 15px/1 var(--body);color:var(--ink);box-shadow:0 2px 8px rgba(8,14,10,.18);cursor:pointer;display:grid;place-items:center}
+.gmap-btn.wide{font-size:11.5px}
+.gmap-btn:hover{border-color:var(--pine);color:var(--pine-deep)}
+.gmap-hint{position:absolute;left:9px;top:9px;z-index:3;background:#fff;border:1px solid var(--line);border-radius:9px;
+  padding:5px 10px;font:700 11.5px/1.4 var(--body);color:var(--pine-deep);box-shadow:0 2px 8px rgba(8,14,10,.14);pointer-events:none}
+.gm-chip{position:absolute;left:9px;right:52px;bottom:9px;z-index:3;background:#fff;border:1px solid var(--line);border-radius:11px;
+  padding:9px 12px;box-shadow:0 6px 18px rgba(8,14,10,.22);pointer-events:auto}
+.gm-chip b{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.gm-chip span{display:block;font-size:12px;color:var(--ink2);margin-top:2px}
+.gm-chip a{display:inline-block;margin-top:5px;font-size:12.5px;font-weight:800;color:var(--ember)}
+
+/* explore map: side list rows */
+.map-row{cursor:pointer;border:1.5px solid var(--line)}
+.map-row:hover{border-color:var(--pine)}
+.map-row.on{border-color:var(--pine);background:var(--mist);box-shadow:0 0 0 1px var(--pine)}
+.map-row.nopin{opacity:.62}
+.map-row .mini-open{font-size:11.5px;font-weight:800;color:var(--ember);flex:none;padding:3px 8px;border-radius:8px;background:var(--ember-mist)}
 
 /* ===== chat: WhatsApp-style message actions, edit mode, quick replies ===== */
 .bub{position:relative}
@@ -384,10 +400,9 @@ textarea.inp{min-height:84px;resize:vertical}
   padding:7px 13px;font:inherit;font-size:12.5px;font-weight:600;color:var(--pine-deep);flex:none}
 .qr-chip:hover{border-color:var(--pine);background:var(--mist)}
 
-/* ===== map: popular-place label pins ===== */
-.pin-land{background:#fff;border:1.5px solid var(--pine);color:var(--pine-deep);font:700 11px/1.4 var(--body);
-  padding:2px 9px;border-radius:99px;box-shadow:0 1px 4px rgba(23,37,29,.18);text-align:center;white-space:nowrap}
-
-/* keep leaflet layer control compact on phones */
-.leaflet-control-layers{border-radius:10px !important;box-shadow:0 2px 10px rgba(23,37,29,.16) !important}
-.leaflet-control-layers-expanded{padding:8px 12px !important;font:600 12px/1.7 var(--body) !important}
+/* ===== auth: brand header (icon + name + tagline, like the prototype) ===== */
+.auth-brand{display:flex;flex-direction:column;align-items:center;text-align:center;padding:6px 0 2px;margin-bottom:6px}
+.auth-logo{width:60px;height:60px;border-radius:16px;box-shadow:0 6px 18px -6px rgba(14,90,51,.45);border:1px solid var(--line)}
+.auth-name{font-family:var(--disp);font-weight:700;font-size:23px;letter-spacing:.01em;color:var(--pine-deep);margin-top:10px}
+.auth-name b{color:var(--ember);font-weight:800}
+.auth-tag{font-size:13px;color:var(--ink2);line-height:1.5;margin-top:5px;max-width:300px}

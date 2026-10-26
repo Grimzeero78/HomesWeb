@@ -58,13 +58,13 @@ async function viewCreate(id) {
       ${txt('landmark', 'Nearest landmark (optional)', 'e.g. opposite Ndagani stage, near the shopping centre')}
       ${sel('road', 'Road access', ROADS)}
       <div class="sec-block" style="margin-top:14px;padding:13px">
-        <h3 style="font-size:14.5px">${ic('pin')} Pin the exact spot on map</h3>
-        <p class="hint-t">Tap the map where your compound is — this is the exact same map students see on your listing page. Switch to <b>Satellite</b> (button on the map) to see houses and gates clearly, or search a place below.</p>
+        <h3 style="font-size:14.5px">${ic('pin')} Pin the exact spot on Google Maps</h3>
+        <p class="hint-t">Tap the map where your compound is — a Google pin drops on the exact spot. This is the same Google map students see on your listing. Switch to <b>Satellite</b> to see houses and gates clearly.</p>
+        <div id="pick-map" style="margin-top:10px;height:280px"></div>
         <div style="display:flex;gap:8px;margin-top:10px">
           <input class="inp" id="pick-q" placeholder="Search a place, e.g. Ndagani" autocomplete="off">
           <button class="btn btn-outline btn-sm" id="pick-go" type="button" style="flex:none">${ic('search')} Search</button>
         </div>
-        <div id="pick-map" style="margin-top:10px"></div>
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
           <button class="btn btn-outline btn-sm" id="pick-gps" type="button">${ic('pin')} Use my current location</button>
         </div>
@@ -218,23 +218,26 @@ async function viewCreate(id) {
     return null;
   }
 
-  // ----- location picker -----
+  // ----- location picker (Google Maps — same map students see) -----
   function wireLocation() {
     const box = v.querySelector('#pick-map');
     const latIn = v.querySelector('#pick-lat'), lngIn = v.querySelector('#pick-lng');
     const statusEl = v.querySelector('#pick-walk');
-    const setPos = (lat, lng) => {
+    let gm = null;
+    const setPos = (lat, lng, move) => {
       L.lat = +(+lat).toFixed(6); L.lng = +(+lng).toFixed(6);
       latIn.value = L.lat; lngIn.value = L.lng;
-      statusEl.innerHTML = `${ic('check')} Spot pinned — students will see it on the map.`;
+      const w = walkMinutes(L.lat, L.lng);
+      statusEl.innerHTML = `${ic('check')} Spot pinned — <b>${w} min walk</b> to the Main Gate. Students will see this exact spot on Google Maps.`;
+      if (move && gm) gm.setView(L.lat, L.lng, Math.max(gm.z, 17));
     };
-    latIn.addEventListener('change', () => { if (latIn.value && lngIn.value) setPos(latIn.value, lngIn.value); });
-    lngIn.addEventListener('change', () => { if (latIn.value && lngIn.value) setPos(latIn.value, lngIn.value); });
+    latIn.addEventListener('change', () => { if (latIn.value && lngIn.value) setPos(latIn.value, lngIn.value, true); });
+    lngIn.addEventListener('change', () => { if (latIn.value && lngIn.value) setPos(latIn.value, lngIn.value, true); });
     v.querySelector('#pick-gps').onclick = () => {
       if (!navigator.geolocation) { toast('Geolocation is not supported on this device', true); return; }
       toast('Getting your location…');
       navigator.geolocation.getCurrentPosition(
-        p => { setPos(p.coords.latitude, p.coords.longitude); if (window._pmap) window._pmap.placeMarker(p.coords.latitude, p.coords.longitude); },
+        p => setPos(p.coords.latitude, p.coords.longitude, true),
         () => toast('Could not get your location — check location permission', true)
       );
     };
@@ -247,32 +250,21 @@ async function viewCreate(id) {
       const hit = await searchPlaces(raw);
       goBtn.disabled = false;
       if (!hit) { toast('Place not found — try the map or GPS instead', true); return; }
-      setPos(hit.lat, hit.lng);
-      if (window._pmap) window._pmap.flyTo(hit.lat, hit.lng);
+      setPos(hit.lat, hit.lng, true);
     };
     goBtn.onclick = doSearch;
     qIn.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
 
-    loadLeaflet().then(() => {
-      box.innerHTML = '<div id="pm-inner" style="height:240px;border-radius:12px;overflow:hidden;border:1px solid var(--line)"></div>';
-      const inner = box.querySelector('#pm-inner');
-      const map = osmMap(inner, { center: [L.lat ?? GATE.lat, L.lng ?? GATE.lng], zoom: L.lat ? 17 : 15 });
-      let marker = null;
-      // NOTE: `L` here is the wizard listing object (shadows Leaflet's global L) —
-      // always use window.L for Leaflet calls inside viewCreate. This shadowing was
-      // the bug that silently stopped click/GPS/search from ever placing a pin.
-      const LF = () => window.L;
-      window._pmap = {
-        placeMarker: (a, b) => { placeMarker(a, b); map.panTo([a, b]); },
-        flyTo: (a, b) => { placeMarker(a, b); map.flyTo([a, b], 16, { duration: 0.8 }); },
-      };
-      function placeMarker(lat, lng) {
-        if (marker) marker.remove();
-        marker = LF().marker([lat, lng], { icon: pickIcon(), keyboard: false }).addTo(map);
-      }
-      map.on('click', e => { setPos(e.latlng.lat, e.latlng.lng); placeMarker(e.latlng.lat, e.latlng.lng); });
-      if (L.lat != null) placeMarker(L.lat, L.lng);
-    }).catch(() => { box.innerHTML = '<div class="notice notice-o">Map could not load — check your internet connection and reopen this step.</div>'; });
+    try {
+      gm = new GMap(box, {
+        lat: L.lat ?? GATE.lat, lng: L.lng ?? GATE.lng, zoom: L.lat != null ? 17 : 15,
+        pick: true, zoomMin: 12,
+        onPin: (a, b) => setPos(a, b, true),
+      });
+      if (L.lat != null) setPos(L.lat, L.lng, false);
+    } catch (e) {
+      box.innerHTML = '<div class="notice notice-o">Map could not load — check your internet connection and reopen this step.</div>';
+    }
   }
 
   // ----- photos -----

@@ -15,8 +15,13 @@ function viewAuth(tab) {
   const v = document.getElementById('view');
   const isReg = tab === 'register';
   v.innerHTML = `<div class="auth-wrap"><div class="auth-card">
-    <h1>${isReg ? 'Create your account' : 'Welcome back'}</h1>
-    <p class="auth-sub">${isReg ? 'Username and password only — no email needed.' : 'Sign in to chat with landlords and save rooms.'}</p>
+    <div class="auth-brand">
+      <img class="auth-logo" src="/icons/icon-192.png" alt="ChukaHomes logo" width="60" height="60">
+      <div class="auth-name">Chuka<b>Homes</b></div>
+      <p class="auth-tag">${isReg
+        ? 'Create a free account — find a room near Chuka University or list your own.'
+        : 'Vacant rooms &amp; hostels near Chuka University — chat with landlords directly, never pay before viewing.'}</p>
+    </div>
     <div class="seg" style="margin:16px 0">
       <button id="t-login" class="${isReg ? '' : 'on'}">Sign in</button>
       <button id="t-reg" class="${isReg ? 'on' : ''}">Create account</button>
@@ -110,6 +115,11 @@ async function viewSetup() {
   const r = await api('/setup');
   if (!r.ok || !r.available) { location.hash = '#/login'; return; }
   v.innerHTML = `<div class="auth-wrap"><div class="auth-card">
+    <div class="auth-brand">
+      <img class="auth-logo" src="/icons/icon-192.png" alt="ChukaHomes logo" width="60" height="60">
+      <div class="auth-name">Chuka<b>Homes</b></div>
+      <p class="auth-tag">One-time setup — secure your platform before students and landlords join.</p>
+    </div>
     <span class="pill pill-o" style="margin-bottom:10px">${ic('shield')} One-time setup</span>
     <h1>Create the admin account</h1>
     <p class="auth-sub">This page only works once — the first account created here becomes the platform Admin. Do this right after deploying.</p>
