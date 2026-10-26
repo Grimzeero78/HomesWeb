@@ -54,7 +54,7 @@ async function viewCreate(id) {
       ${sel('floor', 'Floor', FLOORS)}` },
     { t: 'Location', html: () => `
       ${sel('area', 'Area', AREAS)}
-      ${txt('landmark', 'Nearest landmark', 'e.g. opposite KCB, behind Magumoni church')}
+      ${txt('landmark', 'Nearest landmark', 'e.g. opposite Ndagani stage, near the shopping centre')}
       ${sel('road', 'Road access', ROADS)}
       <div class="sec-block" style="margin-top:14px;padding:13px">
         <h3 style="font-size:14.5px">${ic('pin')} Pin on map</h3>

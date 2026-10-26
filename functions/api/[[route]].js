@@ -53,6 +53,28 @@ async function newSession(env, uid) {
 
 const isImg = (d, max = 1200000) => typeof d === 'string' && d.startsWith('data:image/') && d.length < max;
 
+// ---------- rate limiting (per isolate; cheap in-memory sliding window) ----------
+const RL = new Map();
+function rateLimit(key, max, windowMs) {
+  if (RL.size > 10000) RL.clear();
+  const now = Date.now();
+  const e = RL.get(key);
+  if (!e || now - e[0] > windowMs) { RL.set(key, [now, 1]); return true; }
+  e[1]++;
+  return e[1] <= max;
+}
+const tooMany = () => bad('Too many requests — please slow down and try again shortly.', 429);
+const ipOf = request => (request.headers.get('cf-connecting-ip') || 'unknown').split(',')[0].trim();
+
+// constant-time string compare (password hashes)
+function safeEq(a, b) {
+  a = String(a); b = String(b);
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+
 // ---------- auto schema (runs once per isolate; makes deployment zero-config) ----------
 const SCHEMA = String.raw`
 CREATE TABLE IF NOT EXISTS users (
@@ -320,6 +342,7 @@ export async function onRequest(context) {
     const user = await getSession(request, env);
     const need = (roles) => {
       if (!user) throw Object.assign(new Error('Please sign in first'), { status: 401 });
+      if (user.suspended) throw Object.assign(new Error('This account has been suspended. Contact support.'), { status: 403 });
       if (roles && !roles.includes(user.role)) throw Object.assign(new Error('You are not allowed to do that'), { status: 403 });
       return user;
     };
@@ -330,14 +353,21 @@ export async function onRequest(context) {
       const admins = await env.DB.prepare("SELECT COUNT(*) AS n FROM users WHERE role = 'ADMIN'").first();
       if (method === 'GET') return ok({ available: !admins.n });
       if (admins.n) return bad('Setup is closed — an admin already exists.', 403);
+      // race-proof lock: only one concurrent setup can insert this unique row
+      try {
+        await env.DB.prepare("INSERT INTO settings (key, value) VALUES ('admin_locked', '1')").run();
+      } catch (e) {
+        return bad('Setup is closed — an admin already exists.', 403);
+      }
+      const releaseLock = () => env.DB.prepare("DELETE FROM settings WHERE key = 'admin_locked'").run();
       const b = await json_();
       const username = S(b.username).toLowerCase();
-      if (!/^[a-z0-9_]{3,20}$/.test(username)) return bad('Username must be 3–20 letters, numbers or underscore');
-      if (S(b.password).length < 6) return bad('Password must be at least 6 characters');
-      if (b.password !== b.confirm) return bad('Passwords do not match');
-      if (!S(b.hint)) return bad('Password hint is required');
+      if (!/^[a-z0-9_]{3,20}$/.test(username)) { await releaseLock(); return bad('Username must be 3–20 letters, numbers or underscore'); }
+      if (S(b.password).length < 6) { await releaseLock(); return bad('Password must be at least 6 characters'); }
+      if (b.password !== b.confirm) { await releaseLock(); return bad('Passwords do not match'); }
+      if (!S(b.hint)) { await releaseLock(); return bad('Password hint is required'); }
       const dup = await env.DB.prepare('SELECT id FROM users WHERE username = ?').bind(username).first();
-      if (dup) return bad('That username is taken');
+      if (dup) { await releaseLock(); return bad('That username is taken'); }
       const salt = rand(16);
       const hash = await hashPw(S(b.password), salt);
       const r = await env.DB.prepare(
@@ -350,6 +380,7 @@ export async function onRequest(context) {
 
     // ============ AUTH ============
     if (p0 === 'register' && method === 'POST') {
+      if (!rateLimit('reg:' + ipOf(request), 8, 3600_000)) return tooMany();
       const b = await json_();
       const username = S(b.username).toLowerCase();
       const password = S(b.password);
@@ -375,13 +406,18 @@ export async function onRequest(context) {
     }
 
     if (p0 === 'login' && method === 'POST') {
+      const ip = ipOf(request);
+      if (!rateLimit('login:' + ip, 15, 60_000)) return tooMany();
       const b = await json_();
-      const u = await env.DB.prepare('SELECT * FROM users WHERE username = ?').bind(S(b.username).toLowerCase()).first();
+      const uname = S(b.username).toLowerCase();
+      if (uname && !rateLimit('loginu:' + uname, 8, 60_000)) return tooMany();
+      const u = await env.DB.prepare('SELECT * FROM users WHERE username = ?').bind(uname).first();
       if (!u) return bad('Wrong username or password', 401);
       const [salt, hash] = String(u.pass_hash).split('$');
       const test = await hashPw(S(b.password), salt);
-      if (test !== hash) return bad('Wrong username or password', 401);
+      if (!safeEq(test, hash)) return bad('Wrong username or password', 401);
       if (u.suspended) return bad('This account has been suspended. Contact support.', 403);
+      if (Math.random() < 0.1) await env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(Date.now()).run();
       const token = await newSession(env, u.id);
       return ok({ token, user: pubUser(u) });
     }
@@ -395,6 +431,7 @@ export async function onRequest(context) {
     }
 
     if (p0 === 'hint' && method === 'GET' && seg[1]) {
+      if (!rateLimit('hint:' + ipOf(request), 10, 60_000)) return tooMany();
       const u = await env.DB.prepare('SELECT pass_hint FROM users WHERE username = ?').bind(S(seg[1]).toLowerCase()).first();
       return ok({ hint: u ? u.pass_hint : '' });
     }
@@ -419,6 +456,7 @@ export async function onRequest(context) {
     // ============ LANDLORD VERIFICATION ============
     if (p0 === 'verify' && method === 'POST') {
       const u = need(['LANDLORD']);
+      if (!rateLimit('verify:' + u.id, 5, 3600_000)) return tooMany();
       const b = await json_();
       if (!isImg(b.docId) || !isImg(b.docOwn)) return bad('Upload both your ID photo and your ownership document photo');
       await env.DB.prepare("UPDATE users SET doc_id = ?, doc_own = ?, verify_status = 'PENDING', verify_note = '' WHERE id = ?")
@@ -534,9 +572,12 @@ export async function onRequest(context) {
         await env.DB.prepare('UPDATE listings SET status = ?, updatedAt = ? WHERE id = ?').bind(st, Date.now(), id).run();
         return ok({ status: st });
       }
-      // view counter
+      // view counter (deduped per visitor per listing for 6 hours)
       if (seg[1] && seg[2] === 'view' && method === 'POST') {
-        await env.DB.prepare('UPDATE listings SET views = views + 1 WHERE id = ?').bind(N(seg[1])).run();
+        const id = N(seg[1]);
+        if (rateLimit('view:' + ipOf(request) + ':' + id, 1, 6 * 3600_000)) {
+          await env.DB.prepare('UPDATE listings SET views = views + 1 WHERE id = ?').bind(id).run();
+        }
         return ok();
       }
       // report
@@ -544,8 +585,9 @@ export async function onRequest(context) {
         const u = need();
         const b = await json_();
         if (!S(b.reason)) return bad('Choose a reason');
+        if (!rateLimit('report:' + u.id, 5, 3600_000)) return tooMany();
         await env.DB.prepare('INSERT INTO reports (listingId, reporterId, reason, note, createdAt) VALUES (?,?,?,?,?)')
-          .bind(N(seg[1]), u.id, S(b.reason), S(b.note), Date.now()).run();
+          .bind(N(seg[1]), u.id, S(b.reason), S(b.note).slice(0, 500), Date.now()).run();
         return ok();
       }
       // boost request
@@ -559,7 +601,7 @@ export async function onRequest(context) {
         if (pend) return bad('You already have a boost awaiting confirmation');
         const b = await json_();
         await env.DB.prepare('INSERT INTO boosts (listingId, userId, mpesaCode, createdAt) VALUES (?,?,?,?)')
-          .bind(id, u.id, S(b.mpesaCode), Date.now()).run();
+          .bind(id, u.id, S(b.mpesaCode).slice(0, 40), Date.now()).run();
         return ok();
       }
       // browse/search
@@ -597,6 +639,8 @@ export async function onRequest(context) {
     if (p0 === 'favorites' && seg[1] && method === 'POST') {
       const u = need();
       const lid = N(seg[1]);
+      const lex = await env.DB.prepare("SELECT id FROM listings WHERE id = ? AND status != 'REMOVED'").bind(lid).first();
+      if (!lex) return bad('Listing not found', 404);
       const ex = await env.DB.prepare('SELECT user_id FROM favorites WHERE user_id = ? AND listing_id = ?').bind(u.id, lid).first();
       if (ex) {
         await env.DB.prepare('DELETE FROM favorites WHERE user_id = ? AND listing_id = ?').bind(u.id, lid).run();
@@ -676,6 +720,7 @@ export async function onRequest(context) {
           return ok({ items: rows, me: u.id });
         }
         if (method === 'POST') {
+          if (!rateLimit('msg:' + u.id, 30, 60_000)) return tooMany();
           const b = await json_();
           const text = S(b.text).slice(0, 2000);
           if (!text) return bad('Type a message');

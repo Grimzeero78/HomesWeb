@@ -1,6 +1,6 @@
 // ChukaHomes — shared UI helpers, constants, icons
 const TYPES = ['Bedsitter', 'Single Room', '1 Bedroom', '2 Bedroom', 'Shared Hostel Room', 'Double Room'];
-const AREAS = ['Chuka Town', 'Ndagani', 'Karingani', 'Magumoni Road', 'University Gate Area'];
+const AREAS = ['Ndagani', 'Marine', 'Slaughter', 'Mungoni'];
 const FURN = ['Furnished', 'Semi-furnished', 'Unfurnished'];
 const PERIODS = ['Per Month', 'Per Semester (4 months)', 'Per Year'];
 const WATER = ['Included in rent', 'Pay separately', 'Rationed'];
