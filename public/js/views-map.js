@@ -125,7 +125,7 @@ async function viewMap() {
 
     // ---- permanent area labels (verified coordinates — always visible, no geocoder needed) ----
     CHUKA_PLACES.forEach(p => {
-      if (p.hide) return; // search-only entries (too close to another label)
+      if (p.hide || p.n === 'Main Gate') return; // hidden entries + the GATE pill drawn below
       L.marker([p.lat, p.lng], { icon: landIcon(p.n), keyboard: false, interactive: false, zIndexOffset: 100 }).addTo(map);
     });
 
