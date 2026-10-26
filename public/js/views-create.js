@@ -209,24 +209,19 @@ async function viewCreate(id) {
         () => toast('Could not get your location — check location permission', true)
       );
     };
-    const key = (state.settings.gmaps_key || '').trim();
-    if (!key) {
-      box.innerHTML = `<div class="notice notice-o">${ic('pin')}<span>Map picking is off (no Google Maps key configured). Use "Use my current location" while standing at the property, or type the coordinates.</span></div>`;
-      return;
-    }
-    loadGMaps(key).then(() => {
+    loadLeaflet().then(() => {
       box.innerHTML = '<div id="pm-inner" style="height:240px;border-radius:12px;overflow:hidden;border:1px solid var(--line)"></div>';
       const inner = box.querySelector('#pm-inner');
-      const map = new google.maps.Map(inner, { center: { lat: L.lat ?? GATE.lat, lng: L.lng ?? GATE.lng }, zoom: L.lat ? 17 : 14, mapTypeControl: false, streetViewControl: false });
+      const map = osmMap(inner, { center: [L.lat ?? GATE.lat, L.lng ?? GATE.lng], zoom: L.lat ? 17 : 14 });
       let marker = null;
-      window._pmap = { placeMarker: (a, b) => { placeMarker(a, b); map.panTo({ lat: a, lng: b }); } };
+      window._pmap = { placeMarker: (a, b) => { placeMarker(a, b); map.panTo([a, b]); } };
       function placeMarker(lat, lng) {
-        if (marker) marker.setMap(null);
-        marker = new google.maps.Marker({ position: { lat, lng }, map });
+        if (marker) marker.remove();
+        marker = L.marker([lat, lng], { icon: pickIcon(), keyboard: false }).addTo(map);
       }
-      map.addListener('click', e => { setPos(e.latLng.lat(), e.latLng.lng()); placeMarker(e.latLng.lat(), e.latLng.lng()); });
+      map.on('click', e => { setPos(e.latlng.lat, e.latlng.lng); placeMarker(e.latlng.lat, e.latlng.lng); });
       if (L.lat != null) placeMarker(L.lat, L.lng);
-    }).catch(() => { box.innerHTML = '<div class="notice notice-o">Map could not load — check the Google Maps key.</div>'; });
+    }).catch(() => { box.innerHTML = '<div class="notice notice-o">Map could not load — check your internet connection and reopen this step.</div>'; });
   }
 
   // ----- photos -----

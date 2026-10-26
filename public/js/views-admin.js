@@ -160,8 +160,8 @@ async function viewAdmin(tab) {
       <p class="hint-t" style="margin-bottom:6px">Landlords are told to send KES 200 to this M-Pesa number when boosting.</p>
       <label class="lbl">M-Pesa number</label><input class="inp" id="st-num" value="${esc(state.settings.paybill_number || '')}">
       <label class="lbl">Account name</label><input class="inp" id="st-name" value="${esc(state.settings.paybill_name || '')}">
-      <h3 class="font-disp" style="font-size:16px;margin-top:22px">Google Maps API key</h3>
-      <p class="hint-t" style="margin-bottom:6px">Enables the real Google Map with pins. Free tier is enough: create a key at console.cloud.google.com → enable “Maps JavaScript API” → Credentials.</p>
+      <h3 class="font-disp" style="font-size:16px;margin-top:22px">Google Maps API key <span style="font-weight:500;color:var(--ink3)">(optional)</span></h3>
+      <p class="hint-t" style="margin-bottom:6px">Not required — the site map now runs free on OpenStreetMap with no key and no billing. This field is only kept for optional future use.</p>
       <input class="inp" id="st-key" value="${esc(state.settings.gmaps_key || '')}" placeholder="AIza…">
       <button class="btn btn-green btn-block" id="st-save" style="margin-top:16px">Save settings</button>
     </div>`;

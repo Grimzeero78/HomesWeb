@@ -300,3 +300,12 @@ textarea.inp{min-height:84px;resize:vertical}
 
 /* fix: the hidden attribute must always win over display rules (stuck dark lightbox) */
 [hidden]{display:none!important}
+
+/* ---------- free maps (Leaflet + OpenStreetMap) ---------- */
+.pin-price{display:grid;place-items:center;height:26px;padding:0 8px;border-radius:8px;background:#1b7a47;color:#fff;font:800 10.5px/1 'Instrument Sans',system-ui,sans-serif;border:2px solid #fff;box-shadow:0 2px 8px rgba(8,14,10,.35);white-space:nowrap}
+.pin-price.pin-b{background:#e0620f}
+.pin-gate{display:grid;place-items:center;height:22px;padding:0 10px;border-radius:11px;background:#0e5a33;color:#fff;font:800 10px/1 'Instrument Sans',system-ui,sans-serif;border:2px solid #fff;box-shadow:0 2px 8px rgba(8,14,10,.35);white-space:nowrap}
+.pin-pick{width:18px;height:18px;border-radius:50%;background:#e0620f;border:3px solid #fff;box-shadow:0 2px 8px rgba(8,14,10,.4)}
+.gate-tip{background:#fff;border:1px solid var(--line);box-shadow:0 2px 6px rgba(8,14,10,.18);font-weight:700;font-size:10px;color:#0a3d24;padding:2px 7px;border-radius:6px}
+.gate-tip::before{display:none}
+.leaflet-container{font-family:'Instrument Sans',system-ui,sans-serif}
