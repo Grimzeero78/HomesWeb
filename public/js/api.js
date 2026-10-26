@@ -66,3 +66,23 @@ async function compressTo(file, maxKB, maxDim = 1200, q = 0.72) {
   }
   return out;
 }
+
+// make a small card thumbnail out of an existing image data URL (no re-reading files).
+// Cards/list/map embed thumbs — keeps a 60-listing page around ~1 MB instead of 6-9 MB.
+function shrinkDataUrl(src, maxDim = 340, q = 0.6) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const cv = document.createElement('canvas');
+        cv.width = Math.max(1, Math.round(img.width * scale));
+        cv.height = Math.max(1, Math.round(img.height * scale));
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        resolve(cv.toDataURL('image/webp', q));
+      } catch (e) { reject(e); }
+    };
+    img.onerror = () => reject(new Error('Could not load image'));
+    img.src = src;
+  });
+}

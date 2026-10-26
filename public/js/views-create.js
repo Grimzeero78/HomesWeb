@@ -9,7 +9,7 @@ const LBLANK = () => ({
   bath: 'Shared', kitchen: 'Shared', cooking: 'Yes', balcony: 'No', tile: 'Tiled', ceiling: 'Yes',
   wardrobe: 'No', bed: 'No', desk: 'No',
   security: [], gender: 'Mixed', curfewOn: 'No', curfewTime: '', visitors: 'Daytime only', alcohol: 'No',
-  availableFrom: 'Available now', contactPhone: '', photos: [],
+  availableFrom: 'Available now', contactPhone: '', photos: [], thumbs: [],
 });
 
 const WIZ_STEPS = ['Basics', 'Location', 'Pricing', 'Utilities', 'Room', 'Rules', 'Availability', 'Photos'];
@@ -29,7 +29,8 @@ async function viewCreate(id) {
     v.innerHTML = `<div class="pageload"><div class="skel" style="height:200px"></div><div class="skel" style="height:60px"></div></div>`;
     const r = await api('/listings/' + id);
     if (!r.ok || !r.isOwner) { v.innerHTML = emptyBox('Cannot edit', r.error || 'Not your listing.'); return; }
-    L = { ...L, ...r.listing, security: parseSecurity(r.listing.security), photos: (r.photos || []).map(p => p.url) };
+    L = { ...L, ...r.listing, security: parseSecurity(r.listing.security),
+      photos: (r.photos || []).map(p => p.url), thumbs: (r.photos || []).map(p => p.thumb || '') };
     editingId = id;
   }
   let step = 0;
@@ -283,7 +284,7 @@ async function viewCreate(id) {
         <div class="photo-cell"><img src="${src}"><button class="photo-x" data-i="${i}" type="button">✕</button>
           ${i === 0 ? '<span class="mini-tag" style="position:absolute;bottom:4px;left:4px">Cover</span>' : ''}</div>`).join('')
         + (L.photos.length < 8 ? `<button class="photo-add" id="ph-add" type="button">${ic('camera')}<span>Add photo</span></button>` : '');
-      grid.querySelectorAll('.photo-x').forEach(b => b.onclick = () => { L.photos.splice(+b.dataset.i, 1); draw(); });
+      grid.querySelectorAll('.photo-x').forEach(b => b.onclick = () => { const i = +b.dataset.i; L.photos.splice(i, 1); L.thumbs.splice(i, 1); draw(); });
       grid.querySelector('#ph-add').onclick = () => fileIn.click();
       drawReview();
     };
@@ -292,7 +293,12 @@ async function viewCreate(id) {
       for (const f of files) {
         if (L.photos.length >= 8) { toast('Maximum 8 photos', true); break; }
         toast('Processing photo…');
-        try { L.photos.push(await compressTo(f, 150, 1150, 0.72)); } catch (e) { toast(e.message, true); }
+        try {
+          const full = await compressTo(f, 150, 1150, 0.72);
+          let th = '';
+          try { th = await shrinkDataUrl(full, 340, 0.6); } catch (e2) { /* card falls back to full */ }
+          L.photos.push(full); L.thumbs.push(th);
+        } catch (e) { toast(e.message, true); }
       }
       fileIn.value = '';
       draw();
@@ -321,7 +327,13 @@ async function viewCreate(id) {
     if (L.wifi !== 'Available but paid separately') L.wifiCost = '';
     if (L.curfewOn !== 'Yes') L.curfewTime = '';
     if (L.availableFrom === 'Pick a date…' && !/^\d{4}-\d{2}-\d{2}/.test(L.availableFrom || '')) L.availableFrom = 'Available now';
-    const body = { ...L, photos: L.photos };
+    // make sure every photo has a small thumb (older edits load photos without one)
+    for (let i = 0; i < L.photos.length; i++) {
+      if (!L.thumbs[i] || L.thumbs[i].length >= L.photos[i].length) {
+        try { L.thumbs[i] = await shrinkDataUrl(L.photos[i], 340, 0.6); } catch (e) { L.thumbs[i] = ''; }
+      }
+    }
+    const body = { ...L, photos: L.photos, thumbs: L.thumbs };
     const res = editingId
       ? await api('/listings/' + editingId, { method: 'PUT', body })
       : await api('/listings', { body });

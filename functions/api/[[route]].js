@@ -159,6 +159,7 @@ CREATE TABLE IF NOT EXISTS photos (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   listingId INTEGER NOT NULL,
   url TEXT NOT NULL,
+  thumb TEXT NOT NULL DEFAULT '',
   idx INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_photos_listing ON photos(listingId);
@@ -265,7 +266,12 @@ async function ensureSchema(env) {
         ];
         for (const st of mig4) { try { await env.DB.prepare(st).run(); } catch (e) { /* exists */ } }
       }
-      await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_ver','4')").run();
+      if (ver < 5) {
+        // v5: real small thumbnails. Cards used to embed the full ~150 KB photo data URL —
+        // a 60-listing home page weighed 6-9 MB. With 320 px thumbs it is ~1 MB total.
+        try { await env.DB.prepare("ALTER TABLE photos ADD COLUMN thumb TEXT NOT NULL DEFAULT ''").run(); } catch (e) { /* exists */ }
+      }
+      await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_ver','5')").run();
     })().catch(e => { schemaReady = null; throw e; });
   }
   await schemaReady;
@@ -302,7 +308,7 @@ async function attachThumbs(env, rows, keyField = 'id', outField = 'thumb') {
   const ids = [...new Set(rows.map(r => r[keyField]))];
   const qs = ids.map(() => '?').join(',');
   const res = await env.DB.prepare(
-    `SELECT p.listingId, p.url FROM photos p
+    `SELECT p.listingId, COALESCE(NULLIF(p.thumb, ''), p.url) AS url FROM photos p
      JOIN (SELECT listingId, MIN(idx) AS mIdx FROM photos WHERE listingId IN (${qs}) GROUP BY listingId) t
      ON p.listingId = t.listingId AND p.idx = t.mIdx`).bind(...ids).all();
   const m = {};
@@ -534,7 +540,7 @@ export async function onRequest(context) {
         if (!l) return bad('Listing not found', 404);
         const isOwner = user && (user.id === l.ownerId || user.role === 'ADMIN');
         if (l.status === 'REMOVED' && !isOwner) return bad('Listing not found', 404);
-        const photos = (await env.DB.prepare('SELECT id, url FROM photos WHERE listingId = ? ORDER BY idx').bind(id).all()).results || [];
+        const photos = (await env.DB.prepare('SELECT id, url, thumb FROM photos WHERE listingId = ? ORDER BY idx').bind(id).all()).results || [];
         const similar = await queryListings(env, new URL('http://x/?limit=4'), { similarTo: id, exclude: id });
         const pub = { ...l };
         if (!user) pub.ownerPhone = ''; // contact details require sign-in
@@ -552,6 +558,7 @@ export async function onRequest(context) {
         const photos = Array.isArray(b.photos) ? b.photos.filter(x => isImg(x)) : [];
         if (photos.length < 3) return bad('Add at least 3 photos');
         if (photos.length > 8) return bad('Maximum 8 photos');
+        const thumbsIn = Array.isArray(b.thumbs) ? b.thumbs : [];
         const cnt = (await env.DB.prepare("SELECT COUNT(*) AS n FROM listings WHERE ownerId = ? AND status != 'REMOVED'").bind(u.id).first()).n;
         const limit = u.verify_status === 'APPROVED' ? 5 : 2;
         if (cnt >= limit) return bad(u.verify_status === 'APPROVED'
@@ -564,7 +571,8 @@ export async function onRequest(context) {
           .bind(u.id, ...keys.map(k => v[k]), now, now).run();
         const lid = r.meta.last_row_id;
         await env.DB.batch(photos.map((url, i) =>
-          env.DB.prepare('INSERT INTO photos (listingId, url, idx) VALUES (?, ?, ?)').bind(lid, url, i)));
+          env.DB.prepare('INSERT INTO photos (listingId, url, thumb, idx) VALUES (?, ?, ?, ?)')
+            .bind(lid, url, isImg(thumbsIn[i]) ? thumbsIn[i] : '', i)));
         return ok({ id: lid });
       }
       // update
@@ -585,9 +593,11 @@ export async function onRequest(context) {
           const photos = b.photos.filter(x => isImg(x));
           if (photos.length < 3) return bad('Keep at least 3 photos');
           if (photos.length > 8) return bad('Maximum 8 photos');
+          const thumbsIn = Array.isArray(b.thumbs) ? b.thumbs : [];
           await env.DB.prepare('DELETE FROM photos WHERE listingId = ?').bind(id).run();
           await env.DB.batch(photos.map((url, i) =>
-            env.DB.prepare('INSERT INTO photos (listingId, url, idx) VALUES (?, ?, ?)').bind(id, url, i)));
+            env.DB.prepare('INSERT INTO photos (listingId, url, thumb, idx) VALUES (?, ?, ?, ?)')
+              .bind(id, url, isImg(thumbsIn[i]) ? thumbsIn[i] : '', i)));
         }
         return ok({ id });
       }
