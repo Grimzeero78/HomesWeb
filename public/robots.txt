@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# ChukaHomes — student housing near Chuka University, Kenya
