@@ -1,3 +1,8 @@
 name = "homesweb"
 compatibility_date = "2024-09-23"
 pages_build_output_dir = "public"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "chukahomes-db"
+database_id = "fd6e0266-1f58-400d-b0df-aab206c75e40"
