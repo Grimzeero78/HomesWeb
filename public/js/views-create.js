@@ -232,8 +232,9 @@ async function viewCreate(id) {
       const w = walkMinutes(L.lat, L.lng);
       statusEl.innerHTML = `${ic('check')} Spot pinned — <b>${w} min walk</b> to the Main Gate. Students will see this exact spot on Google Maps.`;
       if (!M) return; // map still loading — the coordinates are saved, the pin appears once it loads
+      // NOTE: inside the wizard `L` is the listing object, so Leaflet must be reached via window.L
       if (!pin) {
-        pin = L.marker([L.lat, L.lng], { icon: redPinIcon(true), draggable: true, autoPan: true, autoPanPadding: [46, 46] }).addTo(M.map);
+        pin = window.L.marker([L.lat, L.lng], { icon: redPinIcon(true), draggable: true, autoPan: true, autoPanPadding: [46, 46] }).addTo(M.map);
         pin.on('drag', () => {
           const p = pin.getLatLng();
           L.lat = +p.lat.toFixed(6); L.lng = +p.lng.toFixed(6);
