@@ -34,6 +34,7 @@ async function viewCreate(id) {
     editingId = id;
   }
   let step = 0;
+  let pickMap = null; // leaflet instance is destroyed before the wizard re-renders the step
 
   const yesNo = (k, label) => `
     <label class="lbl">${label}</label>
@@ -59,8 +60,8 @@ async function viewCreate(id) {
       ${sel('road', 'Road access', ROADS)}
       <div class="sec-block" style="margin-top:14px;padding:13px">
         <h3 style="font-size:14.5px">${ic('pin')} Pin the exact spot on Google Maps</h3>
-        <p class="hint-t">Tap the map where your compound is — a Google pin drops on the exact spot. This is the same Google map students see on your listing. Switch to <b>Satellite</b> to see houses and gates clearly.</p>
-        <div id="pick-map" style="margin-top:10px;height:280px"></div>
+        <p class="hint-t">Drag the red pin to your compound gate — or tap the map and the pin jumps there. This is the same Google map students see on your listing. Switch to <b>Satellite</b> to see houses and gates clearly.</p>
+        <div id="pick-map" style="margin-top:10px;height:300px"></div>
         <div style="display:flex;gap:8px;margin-top:10px">
           <input class="inp" id="pick-q" placeholder="Search a place, e.g. Ndagani" autocomplete="off">
           <button class="btn btn-outline btn-sm" id="pick-go" type="button" style="flex:none">${ic('search')} Search</button>
@@ -223,13 +224,30 @@ async function viewCreate(id) {
     const box = v.querySelector('#pick-map');
     const latIn = v.querySelector('#pick-lat'), lngIn = v.querySelector('#pick-lng');
     const statusEl = v.querySelector('#pick-walk');
-    let gm = null;
+    if (pickMap) { try { pickMap.destroy(); } catch (e) {} pickMap = null; }
+    let M = null, pin = null;
     const setPos = (lat, lng, move) => {
       L.lat = +(+lat).toFixed(6); L.lng = +(+lng).toFixed(6);
       latIn.value = L.lat; lngIn.value = L.lng;
       const w = walkMinutes(L.lat, L.lng);
       statusEl.innerHTML = `${ic('check')} Spot pinned — <b>${w} min walk</b> to the Main Gate. Students will see this exact spot on Google Maps.`;
-      if (move && gm) gm.setView(L.lat, L.lng, Math.max(gm.z, 17));
+      if (!M) return; // map still loading — the coordinates are saved, the pin appears once it loads
+      if (!pin) {
+        pin = L.marker([L.lat, L.lng], { icon: redPinIcon(true), draggable: true, autoPan: true, autoPanPadding: [46, 46] }).addTo(M.map);
+        pin.on('drag', () => {
+          const p = pin.getLatLng();
+          L.lat = +p.lat.toFixed(6); L.lng = +p.lng.toFixed(6);
+          latIn.value = L.lat; lngIn.value = L.lng;
+        });
+        pin.on('dragend', () => {
+          const p = pin.getLatLng();
+          setPos(p.lat, p.lng, false);
+          toast('Pin moved — spot saved');
+        });
+      } else {
+        pin.setLatLng([L.lat, L.lng]);
+      }
+      if (move && M) M.setView(L.lat, L.lng, Math.max(M.zoom, 17), true);
     };
     latIn.addEventListener('change', () => { if (latIn.value && lngIn.value) setPos(latIn.value, lngIn.value, true); });
     lngIn.addEventListener('change', () => { if (latIn.value && lngIn.value) setPos(latIn.value, lngIn.value, true); });
@@ -255,16 +273,20 @@ async function viewCreate(id) {
     goBtn.onclick = doSearch;
     qIn.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
 
-    try {
-      gm = new GMap(box, {
+    loadLeaflet().then(() => {
+      M = makeMap(box, {
         lat: L.lat ?? GATE.lat, lng: L.lng ?? GATE.lng, zoom: L.lat != null ? 17 : 15,
-        pick: true, zoomMin: 12,
-        onPin: (a, b) => setPos(a, b, true),
+        zoomMin: 12, mode: 'page',
       });
+      pickMap = M;
+      onLeave(() => { try { M.destroy(); } catch (e) {} });
+      // tap anywhere = the pin jumps there (the camera stays put, no blank reload)
+      M.map.on('click', e => setPos(e.latlng.lat, e.latlng.lng, false));
       if (L.lat != null) setPos(L.lat, L.lng, false);
-    } catch (e) {
+      setTimeout(() => M.map.invalidateSize(), 60);
+    }).catch(() => {
       box.innerHTML = '<div class="notice notice-o">Map could not load — check your internet connection and reopen this step.</div>';
-    }
+    });
   }
 
   // ----- photos -----

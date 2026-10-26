@@ -1,6 +1,8 @@
-// ChukaHomes — Explore map (keyless Google Maps embed: real roads, estates, shops)
-// The side list holds the rooms; tapping one shows its exact Google pin with a price
-// chip and walk time. Search jumps the map to any place (gazetteer + Nominatim).
+// ChukaHomes — Explore map: real Google Maps tiles (roads, estates, shops all
+// labelled) with every pinned room shown as a price chip. Tap a room in the
+// side list (or a pin on the map) to see its exact spot and open the listing.
+// This page IS a map, so one finger pans the map here — but embedded maps
+// (listing page, wizard) never hijack the page scroll.
 async function viewMap() {
   const v = document.getElementById('view');
   v.innerHTML = `
@@ -9,10 +11,10 @@ async function viewMap() {
       <input class="inp" id="map-q" placeholder="Search a place — e.g. Ndagani, Main Gate, Chuka Town" autocomplete="off">
       <button class="btn btn-primary btn-sm" id="map-go" type="button" style="flex:none">${ic('search')} Search</button>
     </div>
-    <p class="hint-t" style="margin:-4px 0 10px">This is live Google Maps — roads, estates and shops are all named. Tap a room below to show its exact spot, then use <b>Directions</b> to get there.</p>
+    <p class="hint-t" style="margin:-4px 0 10px">Live Google map — roads, estates and shops are all named. Tap a room below to fly to its exact spot, then use <b>Directions</b> in its listing to get there.</p>
     <div class="map-wrap">
       <div class="map-side" id="map-side">${skeletonGrid(2)}</div>
-      <div id="mapbox"><div class="gm-err">Loading Google Maps…</div></div>
+      <div id="mapbox" class="gmap-loading"><div class="gm-err">Loading map…</div></div>
     </div>`;
 
   const r = await api('/listings?limit=100&sort=walk');
@@ -20,28 +22,48 @@ async function viewMap() {
   renderSide(items);
 
   const box = v.querySelector('#mapbox');
-  let gm = null;
+  let M = null;
+  const markers = new Map(); // listing id -> marker
   try {
+    await loadLeaflet();
     box.querySelector('.gm-err')?.remove();
-    gm = new GMap(box, { lat: GATE.lat, lng: GATE.lng, zoom: 16, pick: false, zoomMin: 10 });
+    box.classList.remove('gmap-loading');
+    M = makeMap(box, { lat: GATE.lat, lng: GATE.lng, zoom: 16, zoomMin: 10, mode: 'map' });
+    onLeave(() => { try { M.destroy(); } catch (e) {} M = null; });
+
+    const pinned = items.filter(l => l.lat != null && l.lng != null);
+    pinned.forEach(l => {
+      const m = L.marker([l.lat, l.lng], { icon: priceIcon(l.rent, l.period), keyboard: false }).addTo(M.map);
+      const walk = walkMinutes(l.lat, l.lng);
+      m.bindPopup(`
+        <div style="max-width:190px">
+          <b>${esc(l.title)}</b><br>
+          <span style="color:var(--ink2)">${kes(l.rent)}/${perShort(l.period)} · ${esc(l.area)}${walk ? ' · ' + walk + ' min to gate' : ''}</span><br>
+          <a href="#/listing/${l.id}">Open listing →</a>
+        </div>`);
+      m.on('click', () => highlightSide(l.id));
+      markers.set(l.id, m);
+    });
+    M.fit(pinned.map(l => [l.lat, l.lng]));
+    setTimeout(() => M.map.invalidateSize(), 60);
   } catch (e) {
     box.innerHTML = `<div class="gm-err"><div><b>Map failed to load.</b><br>
       <span style="margin-top:6px;display:inline-block">Check your internet connection and try again.</span></div></div>`;
   }
 
+  function highlightSide(id) {
+    v.querySelectorAll('#map-side [data-id]').forEach(a => a.classList.toggle('on', +a.dataset.id === id));
+    const row = v.querySelector(`#map-side [data-id="${id}"]`);
+    if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
   function showOnMap(l) {
-    if (!gm) return;
     if (l.lat == null || l.lng == null) { toast('This room is not pinned yet — ask the landlord in chat', true); return; }
-    gm.setView(l.lat, l.lng, 18);
-    box.querySelector('.gm-chip')?.remove();
-    const walk = walkMinutes(l.lat, l.lng);
-    const chip = document.createElement('div');
-    chip.className = 'gm-chip';
-    chip.innerHTML = `<b>${esc(l.title)}</b>
-      <span>${kes(l.rent)}/${perShort(l.period)} · ${esc(l.area)}${l.landmark ? ' · ' + esc(l.landmark) : ''}${walk ? ' · ' + walk + ' min walk to gate' : ''}</span>
-      <a href="#/listing/${l.id}">Open listing →</a>`;
-    box.appendChild(chip);
-    v.querySelectorAll('#map-side [data-id]').forEach(a => a.classList.toggle('on', +a.dataset.id === l.id));
+    if (!M) return;
+    M.setView(l.lat, l.lng, 18, true);
+    const m = markers.get(l.id);
+    if (m) setTimeout(() => m.openPopup(), 450);
+    highlightSide(l.id);
   }
 
   function renderSide(list) {
@@ -83,8 +105,7 @@ async function viewMap() {
     const hit = await searchPlaces(q);
     go.disabled = false;
     if (!hit) { toast('Place not found — try "Ndagani", "Main Gate" or a road name', true); return; }
-    if (gm) gm.setView(hit.lat, hit.lng, 17);
-    box.querySelector('.gm-chip')?.remove();
+    if (M) M.setView(hit.lat, hit.lng, 17, true);
     v.querySelectorAll('#map-side .map-row.on').forEach(a => a.classList.remove('on'));
   };
   const go = v.querySelector('#map-go');

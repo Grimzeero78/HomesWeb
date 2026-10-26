@@ -280,9 +280,10 @@ async function viewThread(id) {
 
   await poll(true);
   clearInterval(chatTimer);
-  // 3s while you are looking at the app; ~12s when the tab is in the background (saves ~75% of
-  // server load — this is what keeps the site fast and cheap at 1000 users)
+  // 4s while you are looking at the app; ~24s when the tab is in the background.
+  // Deep background backoff is what keeps the API cheap enough to stay on
+  // Cloudflare's free tier at 1000 users.
   let tickN = 0;
-  chatTimer = setInterval(() => { tickN++; if (document.hidden && tickN % 4 !== 1) return; poll(false); }, 3000);
+  chatTimer = setInterval(() => { tickN++; if (document.hidden && tickN % 6 !== 1) return; poll(false); }, 4000);
   onLeave(() => { clearInterval(chatTimer); });
 }

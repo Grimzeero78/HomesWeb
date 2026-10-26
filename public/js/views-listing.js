@@ -169,8 +169,15 @@ async function viewListing(id) {
   if (coords) {
     const el = document.getElementById('lmap');
     if (el) {
-      try { new GMap(el, { lat: l.lat, lng: l.lng, zoom: 17, pick: false, zoomMin: 10 }); }
-      catch (e) { el.innerHTML = '<div class="gm-err"><div><b>Map failed to load.</b><br><span style="margin-top:6px;display:inline-block">Check your internet connection and refresh.</span></div></div>'; }
+      loadLeaflet().then(() => {
+        const m = makeMap(el, { lat: l.lat, lng: l.lng, zoom: 17, zoomMin: 10, mode: 'page' });
+        L.marker([l.lat, l.lng], { icon: redPinIcon(false), keyboard: false }).addTo(m.map)
+          .bindPopup(`<b>${esc(l.title)}</b><br><span style="color:var(--ink2)">${esc(l.area)}${l.landmark ? ' · ' + esc(l.landmark) : ''}</span>`);
+        setTimeout(() => m.map.invalidateSize(), 60);
+        onLeave(() => { try { m.destroy(); } catch (e) {} });
+      }).catch(() => {
+        el.innerHTML = '<div class="gm-err"><div><b>Map failed to load.</b><br><span style="margin-top:6px;display:inline-block">Check your internet connection and refresh.</span></div></div>';
+      });
     }
   }
 

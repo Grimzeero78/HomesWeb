@@ -1,6 +1,6 @@
 /* ChukaHomes service worker — network first, cache fallback (offline shell only) */
-const CACHE = 'chukahomes-v5';
-const CORE = ['/', '/styles.css', '/js/api.js', '/js/ui.js', '/js/app.js', '/manifest.webmanifest', '/icons/icon-192.png'];
+const CACHE = 'chukahomes-v6';
+const CORE = ['/', '/styles.css', '/js/api.js', '/js/ui.js', '/js/maps.js', '/js/app.js', '/manifest.webmanifest', '/icons/icon-192.png', '/vendor/leaflet.css', '/vendor/leaflet.js'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE)).then(() => self.skipWaiting()));
