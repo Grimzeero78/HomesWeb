@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ChukaHomes — Student Housing & Hostels near Chuka University</title>
+<meta name="description" content="Find vacant bedsitters, single rooms and hostels around Chuka University. Chat with landlords directly. Never pay before viewing.">
+<meta name="theme-color" content="#0e5a33">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidenav" id="sidenav">
+    <a class="brand" href="#/home">
+      <span class="brand-mark">CH</span>
+      <span class="brand-word">CHUKA<b>HOMES</b></span>
+    </a>
+    <nav id="sidenav-links" class="side-links"></nav>
+    <div id="sidenav-foot" class="side-foot"></div>
+  </aside>
+
+  <header class="topbar">
+    <a class="brand-m" href="#/home">CHUKA<b>HOMES</b></a>
+    <div id="top-actions" class="top-acts"></div>
+  </header>
+
+  <main id="view" class="view"></main>
+
+  <nav id="bottomnav" class="bottomnav"></nav>
+</div>
+
+<div id="modal-root"></div>
+<div id="lightbox" class="lightbox" hidden><img id="lightbox-img" alt=""></div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="/js/api.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/views-home.js"></script>
+<script src="/js/views-map.js"></script>
+<script src="/js/views-listing.js"></script>
+<script src="/js/views-auth.js"></script>
+<script src="/js/views-create.js"></script>
+<script src="/js/views-chat.js"></script>
+<script src="/js/views-landlord.js"></script>
+<script src="/js/views-admin.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
