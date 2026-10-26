@@ -6,7 +6,7 @@ const NAV = [
   ['#/', 'home', 'Home'],
   ['#/search', 'search', 'Search'],
   ['#/map', 'pin', 'Map'],
-  ['#/chats', 'chat', 'Chats'],
+  ['#/chats', 'chats', 'Chats'],
   ['#/profile', 'user', 'Profile'],
 ];
 
@@ -60,7 +60,7 @@ function buildNav(active) {
     ...(state.user && state.user.role === 'LANDLORD' ? [['#/mylistings', 'doc', 'My listings'], ['#/new', 'plus', 'Post a listing']] : []),
     ...(state.user ? [['#/favorites', 'heart', 'Favourites']] : [])];
   sn.innerHTML = links.map(([href, key, label]) =>
-    `<a class="sl ${cur === key ? 'on' : ''}" href="${href}" data-nav="${key}">${ic(key)}<span>${label}</span>${key === 'chats' ? '<span class="bn-badge" id="snav-dot" hidden></span>' : ''}</a>`).join('');
+    `<a class="sl ${cur === key ? 'on' : ''}" href="${href}" data-nav="${key}">${ic(key === 'chats' ? 'chat' : key)}<span>${label}</span>${key === 'chats' ? '<span class="bn-badge" id="snav-dot" hidden></span>' : ''}</a>`).join('');
 
   const ta = document.getElementById('top-actions');
   const foot = document.getElementById('sidenav-foot');
