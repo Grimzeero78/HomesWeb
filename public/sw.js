@@ -1,5 +1,5 @@
 /* ChukaHomes service worker — network first, cache fallback (offline shell only) */
-const CACHE = 'chukahomes-v3';
+const CACHE = 'chukahomes-v4';
 const CORE = ['/', '/styles.css', '/js/api.js', '/js/ui.js', '/js/app.js', '/manifest.webmanifest', '/icons/icon-192.png'];
 
 self.addEventListener('install', e => {

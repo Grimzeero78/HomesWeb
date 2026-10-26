@@ -59,7 +59,7 @@ async function viewCreate(id) {
       ${sel('road', 'Road access', ROADS)}
       <div class="sec-block" style="margin-top:14px;padding:13px">
         <h3 style="font-size:14.5px">${ic('pin')} Pin the exact spot on map</h3>
-        <p class="hint-t">Tap the map where your compound is. Switch to <b>Satellite</b> (button on the map) to see houses and gates clearly — or search a place below.</p>
+        <p class="hint-t">Tap the map where your compound is — this is the exact same map students see on your listing page. Switch to <b>Satellite</b> (button on the map) to see houses and gates clearly, or search a place below.</p>
         <div style="display:flex;gap:8px;margin-top:10px">
           <input class="inp" id="pick-q" placeholder="Search a place, e.g. Ndagani" autocomplete="off">
           <button class="btn btn-outline btn-sm" id="pick-go" type="button" style="flex:none">${ic('search')} Search</button>

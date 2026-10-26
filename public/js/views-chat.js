@@ -69,7 +69,7 @@ async function viewThread(id) {
       <div class="avatar" style="width:38px;height:38px;font-size:14px">${esc((other.name || '?')[0].toUpperCase())}</div>
       <div style="flex:1;min-width:0">
         <div style="font-weight:800;font-size:14.5px">${esc(other.name || other.username)}
-          ${other.verify_status === 'APPROVED' ? `<span class="vbadge">${ic('shield')}</span>` : ''}</div>
+          ${other.verifyStatus === 'APPROVED' ? `<span class="vbadge">${ic('shield')}</span>` : ''}</div>
         <div style="font-size:11.5px;color:var(--ink2)">${esc(listing.title)} · ${kes(listing.rent)}/${perShort(listing.period)}${(state.user.role !== 'STUDENT' && other.role === 'STUDENT' && other.regNo) ? ' · Reg № ' + esc(other.regNo) : ''}</div>
       </div>
       ${other.phone ? `<a class="btn btn-green btn-sm" href="tel:${esc(other.phone)}">${ic('phone')}</a>

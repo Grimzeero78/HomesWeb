@@ -72,8 +72,8 @@ async function viewListing(id) {
 
       <div class="sec-block"><h3>Location</h3>
         ${coords ? `
-        <iframe title="map" loading="lazy" style="width:100%;height:230px;border:0;border-radius:12px"
-          src="https://maps.google.com/maps?q=${l.lat},${l.lng}&z=16&output=embed"></iframe>
+        <div id="lmap" style="height:250px;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#e9eef0"></div>
+        <p class="hint-t" style="margin-top:7px">Use the layers button (top right of the map) to switch to <b>Satellite</b> and see the compound and gate clearly — the same map the landlord used to pin this spot.</p>
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
           <a class="btn btn-outline btn-sm" target="_blank" rel="noopener" href="${gmapsLink}">${ic('pin')} Open in Google Maps</a>
           <a class="btn btn-outline btn-sm" target="_blank" rel="noopener" href="${dirLink}">${ic('send')} Directions</a>
@@ -163,6 +163,30 @@ async function viewListing(id) {
   }
 
   v.querySelectorAll('.gallery img, .gal-thumbs img').forEach(el => { el.style.cursor = 'zoom-in'; });
+
+  // location map — the SAME Leaflet map (tiles + layer buttons) the landlord used to pin
+  // the spot in the create/edit wizard, so what students see is exactly what was pinned
+  if (coords) {
+    loadLeaflet().then(() => {
+      const el = document.getElementById('lmap');
+      if (!el) return; // user navigated away
+      const map = osmMap(el, { center: [l.lat, l.lng], zoom: 17 });
+      // don't trap page scrolling: wheel-zoom only after the map is clicked/focused
+      map.scrollWheelZoom.disable();
+      map.on('click focus', () => map.scrollWheelZoom.enable());
+      map.on('mouseout', () => map.scrollWheelZoom.disable());
+      L.control.scale({ imperial: false }).addTo(map);
+      L.marker([l.lat, l.lng], { icon: pickIcon() }).addTo(map)
+        .bindPopup(`<div style="font-family:Instrument Sans,sans-serif"><b>${esc(l.title)}</b><br>
+          <span style="font-size:12px;color:#555">${esc(l.area)}${l.landmark ? ' · ' + esc(l.landmark) : ''}</span></div>`);
+      // GATE pill gives orientation: how far the compound is from campus
+      L.marker([GATE.lat, GATE.lng], { icon: gateIcon(), keyboard: false }).addTo(map)
+        .bindTooltip('Chuka University Main Gate', { direction: 'top', offset: [0, -10] });
+    }).catch(() => {
+      const el = document.getElementById('lmap');
+      if (el) el.innerHTML = '<div class="gm-err"><div><b>Map failed to load.</b><br><span style="margin-top:6px;display:inline-block">Check your internet connection and refresh.</span></div></div>';
+    });
+  }
 
   // actions
   v.querySelector('#btn-fav').onclick = async () => {

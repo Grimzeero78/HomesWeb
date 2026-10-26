@@ -8,7 +8,8 @@ const DAY = 86400000;
 
 const json = (o, s = 200) => new Response(JSON.stringify(o), {
   status: s,
-  headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' }
+  // nosniff: Pages _headers only apply to static assets — Functions must set it themselves
+  headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' }
 });
 const ok = (o = {}) => json({ ok: true, ...o });
 const bad = (error, s = 400) => json({ ok: false, error }, s);
@@ -51,15 +52,23 @@ async function newSession(env, uid) {
   return t;
 }
 
-const isImg = (d, max = 1200000) => typeof d === 'string' && d.startsWith('data:image/') && d.length < max;
+// strict image check: real raster types only. The old startsWith('data:image/') also let
+// image/svg+xml through, which is a script-capable format when opened outside an <img>
+const IMG_RE = /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/;
+const isImg = (d, max = 1200000) => typeof d === 'string' && d.length < max && IMG_RE.test(d);
 
 // ---------- rate limiting (per isolate; cheap in-memory sliding window) ----------
 const RL = new Map();
 function rateLimit(key, max, windowMs) {
-  if (RL.size > 10000) RL.clear();
   const now = Date.now();
+  // prune expired entries instead of wipe-all: a flood of unique keys used to reset
+  // every counter (including login brute-force windows) once the map hit its cap
+  if (RL.size > 8000) {
+    for (const [k, e] of RL) { if (now - e[0] > e[2]) RL.delete(k); }
+    if (RL.size > 20000) RL.clear(); // absolute memory cap
+  }
   const e = RL.get(key);
-  if (!e || now - e[0] > windowMs) { RL.set(key, [now, 1]); return true; }
+  if (!e || now - e[0] > windowMs) { RL.set(key, [now, 1, windowMs]); return true; }
   e[1]++;
   return e[1] <= max;
 }
@@ -286,10 +295,13 @@ const LNUM = ['units', 'walkGate', 'walkStage', 'rent', 'deposit'];
 // wifi is a string option in this schema; lat/lng handled separately.
 
 function listingCols(b, base) {
+  // length caps: without them an authenticated landlord could store megabyte strings in
+  // title/terms/etc and blow the D1 storage quota (or break card layouts) with one request
+  const LCAPS = { title: 90, landmark: 120, terms: 1200, fees: 200, contactPhone: 20, availableFrom: 40, period: 40, waterSched: 80, wifiProvider: 40 };
   const out = {};
-  for (const k of LSTR) if (b[k] !== undefined) out[k] = S(b[k]);
-  for (const k of LYNN) if (b[k] !== undefined) out[k] = S(b[k]); // stored as Yes/No text
-  for (const k of LNUM) if (b[k] !== undefined) out[k] = Math.max(0, N(b[k]));
+  for (const k of LSTR) if (b[k] !== undefined) out[k] = S(b[k]).slice(0, LCAPS[k] || 60);
+  for (const k of LYNN) if (b[k] !== undefined) out[k] = S(b[k]).slice(0, 12); // Yes/No-style fields
+  for (const k of LNUM) if (b[k] !== undefined) out[k] = Math.min(k === 'units' ? 1000 : 10000000, Math.max(0, N(b[k])));
   if (b.wifi !== undefined) out.wifi = S(b.wifi);
   if (b.lat !== undefined) out.lat = b.lat === '' || b.lat === null ? null : N(b.lat);
   if (b.lng !== undefined) out.lng = b.lng === '' || b.lng === null ? null : N(b.lng);
@@ -418,7 +430,7 @@ export async function onRequest(context) {
       const hash = await hashPw(S(b.password), salt);
       const r = await env.DB.prepare(
         "INSERT INTO users (username, pass_hash, pass_hint, name, role, phone, created_at) VALUES (?,?,?,?,?,?,?)")
-        .bind(username, salt + '$' + hash, S(b.hint), S(b.name) || 'Admin', 'ADMIN', S(b.phone), Date.now()).run();
+        .bind(username, salt + '$' + hash, S(b.hint).slice(0, 120), (S(b.name) || 'Admin').slice(0, 60), 'ADMIN', S(b.phone), Date.now()).run();
       const token = await newSession(env, r.meta.last_row_id);
       const u = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(r.meta.last_row_id).first();
       return ok({ token, user: pubUser(u) });
@@ -443,12 +455,20 @@ export async function onRequest(context) {
       if (dup) return bad('That username is taken');
       const salt = rand(16);
       const hash = await hashPw(password, salt);
-      const r = await env.DB.prepare(
-        'INSERT INTO users (username, pass_hash, pass_hint, name, role, phone, reg_no, created_at) VALUES (?,?,?,?,?,?,?,?)')
-        .bind(username, salt + '$' + hash, S(b.hint), S(b.name), role, phone, role === 'STUDENT' ? S(b.regNo) : '', Date.now()).run();
-      const token = await newSession(env, r.meta.last_row_id);
-      const u = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(r.meta.last_row_id).first();
-      return ok({ token, user: pubUser(u) });
+      // caps stop storage abuse (a 5 MB hint/name used to be stored verbatim);
+      // try/catch turns the UNIQUE race (double-submit) into a friendly 400 instead of a 500
+      try {
+        const r = await env.DB.prepare(
+          'INSERT INTO users (username, pass_hash, pass_hint, name, role, phone, reg_no, created_at) VALUES (?,?,?,?,?,?,?,?)')
+          .bind(username, salt + '$' + hash, S(b.hint).slice(0, 120), S(b.name).slice(0, 60), role, phone,
+            role === 'STUDENT' ? S(b.regNo).slice(0, 32) : '', Date.now()).run();
+        const token = await newSession(env, r.meta.last_row_id);
+        const u = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(r.meta.last_row_id).first();
+        return ok({ token, user: pubUser(u) });
+      } catch (e) {
+        if (String(e.message || '').includes('UNIQUE')) return bad('That username is taken');
+        throw e;
+      }
     }
 
     if (p0 === 'login' && method === 'POST') {
@@ -494,7 +514,8 @@ export async function onRequest(context) {
       const regNo = b.regNo !== undefined ? S(b.regNo) : u.reg_no;
       if (phone && !/^\+?\d{9,15}$/.test(phone)) return bad('Enter a valid phone / WhatsApp number');
       if (!name) return bad('Name is required');
-      await env.DB.prepare('UPDATE users SET name = ?, phone = ?, reg_no = ? WHERE id = ?').bind(name, phone, regNo, u.id).run();
+      await env.DB.prepare('UPDATE users SET name = ?, phone = ?, reg_no = ? WHERE id = ?')
+        .bind(name.slice(0, 60), phone, S(regNo).slice(0, 32), u.id).run();
       const nu = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(u.id).first();
       return ok({ user: pubUser(nu) });
     }
@@ -512,7 +533,10 @@ export async function onRequest(context) {
 
     // ============ SETTINGS ============
     if (p0 === 'settings' && method === 'GET') {
-      const rows = (await env.DB.prepare('SELECT key, value FROM settings').all()).results || [];
+      // public read is limited to the payment details shown on the boost page.
+      // Everything else (admin_locked, schema_ver, any legacy key) is server-private —
+      // the old endpoint leaked every row to anonymous visitors.
+      const rows = (await env.DB.prepare("SELECT key, value FROM settings WHERE key IN ('paybill_number','paybill_name')").all()).results || [];
       const st = {};
       rows.forEach(r => { st[r.key] = r.value; });
       return ok({ settings: st });
@@ -520,7 +544,9 @@ export async function onRequest(context) {
     if (p0 === 'settings' && method === 'PUT') {
       const u = need(['ADMIN']);
       const b = await json_();
-      const allowed = ['paybill_number', 'paybill_name', 'gmaps_key'];
+      // gmaps_key removed: maps run keyless on OSM/Esri, and an unused key column that
+      // anonymous users could once read is a leak waiting to happen
+      const allowed = ['paybill_number', 'paybill_name'];
       for (const k of allowed) if (b[k] !== undefined) {
         await env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
           .bind(k, S(b[k])).run();
@@ -532,6 +558,7 @@ export async function onRequest(context) {
     if (p0 === 'listings') {
       // detail
       if (seg[1] && !seg[2] && method === 'GET') {
+        if (!rateLimit('read:' + ipOf(request), 240, 60_000)) return tooMany();
         const id = N(seg[1]);
         const l = await env.DB.prepare(
           `SELECT l.*, o.name AS ownerName, o.username AS ownerUsername, o.phone AS ownerPhone,
@@ -543,7 +570,7 @@ export async function onRequest(context) {
         const photos = (await env.DB.prepare('SELECT id, url, thumb FROM photos WHERE listingId = ? ORDER BY idx').bind(id).all()).results || [];
         const similar = await queryListings(env, new URL('http://x/?limit=4'), { similarTo: id, exclude: id });
         const pub = { ...l };
-        if (!user) pub.ownerPhone = ''; // contact details require sign-in
+        if (!user) { pub.ownerPhone = ''; pub.contactPhone = ''; } // contact details require sign-in (privacy promise made in the wizard)
         return ok({ listing: pub, photos, similar, isOwner: !!isOwner });
       }
       // create
@@ -572,7 +599,7 @@ export async function onRequest(context) {
         const lid = r.meta.last_row_id;
         await env.DB.batch(photos.map((url, i) =>
           env.DB.prepare('INSERT INTO photos (listingId, url, thumb, idx) VALUES (?, ?, ?, ?)')
-            .bind(lid, url, isImg(thumbsIn[i]) ? thumbsIn[i] : '', i)));
+            .bind(lid, url, isImg(thumbsIn[i], 200000) ? thumbsIn[i] : '', i)));
         return ok({ id: lid });
       }
       // update
@@ -597,7 +624,7 @@ export async function onRequest(context) {
           await env.DB.prepare('DELETE FROM photos WHERE listingId = ?').bind(id).run();
           await env.DB.batch(photos.map((url, i) =>
             env.DB.prepare('INSERT INTO photos (listingId, url, thumb, idx) VALUES (?, ?, ?, ?)')
-              .bind(id, url, isImg(thumbsIn[i]) ? thumbsIn[i] : '', i)));
+              .bind(id, url, isImg(thumbsIn[i], 200000) ? thumbsIn[i] : '', i)));
         }
         return ok({ id });
       }
@@ -656,6 +683,7 @@ export async function onRequest(context) {
       }
       // browse/search
       if (!seg[1] && method === 'GET') {
+        if (!rateLimit('read:' + ipOf(request), 240, 60_000)) return tooMany();
         const rows = await queryListings(env, url, {});
         return ok({ items: rows });
       }
@@ -705,6 +733,7 @@ export async function onRequest(context) {
       const u = need();
       // open or create
       if (!seg[1] && method === 'POST') {
+        if (!rateLimit('conv:' + u.id, 10, 60_000)) return tooMany();
         const b = await json_();
         const lid = N(b.listingId);
         const l = await env.DB.prepare('SELECT * FROM listings WHERE id = ?').bind(lid).first();
@@ -744,14 +773,25 @@ export async function onRequest(context) {
         const c = await env.DB.prepare('SELECT * FROM conversations WHERE id = ?').bind(N(seg[1])).first();
         if (!c || (c.studentId !== u.id && c.landlordId !== u.id && u.role !== 'ADMIN')) return bad('Conversation not found', 404);
         const l = await env.DB.prepare('SELECT id, title, rent, period, ptype, status, contactPhone FROM listings WHERE id = ?').bind(c.listingId).first();
-        const other = await env.DB.prepare('SELECT id, name, username, phone, role, verify_status FROM users WHERE id = ?')
+        const other = await env.DB.prepare('SELECT id, name, username, phone, role, verify_status, reg_no FROM users WHERE id = ?')
           .bind(c.studentId === u.id ? c.landlordId : c.studentId).first();
-        await env.DB.prepare('UPDATE messages SET readAt = ? WHERE convId = ? AND senderId != ? AND readAt IS NULL')
-          .bind(Date.now(), c.id, u.id).run();
+        // only the two parties mark messages read — an admin previewing a thread for
+        // moderation must not corrupt the real recipient's read receipts
+        if (c.studentId === u.id || c.landlordId === u.id) {
+          await env.DB.prepare('UPDATE messages SET readAt = ? WHERE convId = ? AND senderId != ? AND readAt IS NULL')
+            .bind(Date.now(), c.id, u.id).run();
+        }
         const otherTyping = !!(c.typingBy && c.typingBy !== u.id && c.typingAt && Date.now() - c.typingAt < 6000);
+        // slim projection: the old pubUser() leaked verifyNote (the admin's PRIVATE
+        // verification comments, e.g. why docs were rejected) to the chat counterpart
+        const otherPub = other ? {
+          id: other.id, name: other.name, username: other.username, phone: other.phone,
+          role: other.role, verifyStatus: other.verify_status,
+          ...(c.landlordId === u.id && other.role === 'STUDENT' ? { regNo: other.reg_no } : {})
+        } : null;
         return ok({
           conv: { id: c.id, listingId: c.listingId },
-          listing: l, other: pubUser(other), otherTyping
+          listing: l, other: otherPub, otherTyping
         });
       }
       // messages
@@ -769,9 +809,10 @@ export async function onRequest(context) {
             if (m.deleted) m.text = '';           // tombstone — never leak deleted text
             delete m.hiddenFor;
           });
-          // mark read ONLY when something new arrived — running this UPDATE on every 3s poll
-          // with zero new rows burned D1 writes for nothing (real cost at 1000 users)
-          if (rows.length) {
+          // mark read ONLY when something new arrived AND the viewer is one of the two
+          // parties (an admin previewing must not mark the student's chat as read);
+          // running this UPDATE on every 3s poll with zero new rows also burned D1 writes
+          if (rows.length && (c.studentId === u.id || c.landlordId === u.id)) {
             await env.DB.prepare('UPDATE messages SET readAt = ? WHERE convId = ? AND senderId != ? AND readAt IS NULL')
               .bind(Date.now(), cid, u.id).run();
           }
@@ -832,8 +873,10 @@ export async function onRequest(context) {
             let arr = [];
             try { arr = JSON.parse(m.hiddenFor || '[]'); } catch (e) { arr = []; }
             if (!Array.isArray(arr)) arr = [];
-            if (!arr.includes(String(u.id))) arr.push(String(u.id)); // string ids → LIKE-safe
-            await env.DB.prepare('UPDATE messages SET hiddenFor = ? WHERE id = ?').bind(JSON.stringify(arr), mid).run();
+            if (!arr.includes(String(u.id))) {
+              arr.push(String(u.id)); // string ids → LIKE-safe
+              await env.DB.prepare('UPDATE messages SET hiddenFor = ? WHERE id = ?').bind(JSON.stringify(arr), mid).run();
+            }
           }
           return ok({});
         }
@@ -968,6 +1011,7 @@ export async function onRequest(context) {
   } catch (e) {
     const s = e.status || 500;
     if (s === 500) console.error('API error', e);
-    return bad(e.message || 'Server error', s);
+    // 5xx must not echo raw exception text (SQL internals etc.) to the client
+    return bad(s === 500 ? 'Something went wrong on our side — please try again.' : (e.message || 'Server error'), s);
   }
 }
