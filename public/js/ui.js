@@ -14,7 +14,8 @@ const GENDER = ['Male only', 'Female only', 'Mixed'];
 const VISITORS = ['Yes', 'Daytime only', 'No'];
 const ROADS = ['Tarmac', 'Murram', 'Footpath only'];
 const SECURITY = ['Guard', 'Gate lock', 'CCTV'];
-const FLOORS = ['Ground', '1st', '2nd', '3rd', '4th'];
+const FLOORS = ['Ground', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th', '10th'];
+const AVAIL_OPTIONS = ['Available now', 'Within a week', 'Within a month', 'Next semester (January)', 'Pick a date…'];
 const REPORT_REASONS = ['Fake or scam listing', 'Unit is already taken', 'Wrong price or info', 'Poster is not the landlord', 'Misleading photos', 'Other'];
 const GATE = { lat: -0.3410, lng: 37.6420 };
 const BOOST = { amountKes: 200, days: 7 };
@@ -41,6 +42,7 @@ function timeAgo(ts) {
   return new Date(ts).toLocaleDateString('en-KE', { day: 'numeric', month: 'short' });
 }
 function fmtDate(ts) { return new Date(ts).toLocaleDateString('en-KE', { day: 'numeric', month: 'short', year: 'numeric' }); }
+function fmtAvail(v) { if (!v) return 'Now'; return /^\d{4}-\d{2}-\d{2}/.test(v) ? fmtDate(v) : v; }
 const parseSecurity = s => { try { const v = JSON.parse(s || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
 
 function amenityTags(l) {
@@ -167,8 +169,7 @@ function lightbox(src) {
 function listingCard(l) {
   const boosted = l.boostedUntil && l.boostedUntil > Date.now();
   const verified = l.ownerVerified === 'APPROVED';
-  const walkMin = l.walkGate || walkMinutes(l.lat, l.lng);
-  const locTxt = [esc(l.area), walkMin ? walkMin + ' min walk' : (l.landmark ? esc(l.landmark) : '')].filter(Boolean).join(' · ');
+  const locTxt = [esc(l.area), l.landmark ? esc(l.landmark) : ''].filter(Boolean).join(' · ');
   return `<a class="card" href="#/listing/${l.id}">
     <div class="cph">${l.thumb ? `<img loading="lazy" src="${l.thumb}" alt="${esc(l.title)}">` : `<div class="cph-empty">${ic('photo')}</div>`}
       <span class="wm"></span>

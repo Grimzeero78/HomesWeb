@@ -21,8 +21,6 @@ async function viewListing(id) {
   const canContact = !!state.user;
   const verified = l.ownerVerify === 'APPROVED';
   const boosted = l.boostedUntil && l.boostedUntil > Date.now();
-  const walkMin = l.walkGate || walkMinutes(l.lat, l.lng);
-  const walkTxt = walkMin ? `${walkMin} min walk to Main Gate` : 'Not pinned — ask in chat';
   const coords = l.lat != null && l.lng != null;
   const gmapsLink = coords ? `https://www.google.com/maps/search/?api=1&query=${l.lat},${l.lng}` : null;
   const dirLink = coords ? `https://www.google.com/maps/dir/?api=1&destination=${l.lat},${l.lng}` : null;
@@ -48,7 +46,7 @@ async function viewListing(id) {
       <div class="dhead">
         <div class="dprice">${kes(l.rent)}<span> /${perShort(l.period).replace('sem', 'semester').replace('yr', 'year').replace('mo', 'month')}</span></div>
         <div class="dtitle">${esc(l.title)}</div>
-        <div class="dmeta">${ic('pin')} ${esc(l.area)}${l.landmark ? ' · ' + esc(l.landmark) : ''}${walkMin ? ' · ' + walkMin + ' min walk' : ''}</div>
+        <div class="dmeta">${ic('pin')} ${esc(l.area)}${l.landmark ? ' · ' + esc(l.landmark) : ''}</div>
         <div style="display:flex;gap:7px;margin-top:9px;flex-wrap:wrap">
           ${boosted ? `<span class="pill pill-o">${ic('bolt')}Boosted</span>` : ''}
           ${verified ? `<span class="pill pill-g">${ic('shield')}Verified landlord</span>` : ''}
@@ -69,7 +67,7 @@ async function viewListing(id) {
         <div class="dcell"><div class="k">Furnishing</div><div class="v">${esc(l.furnishing)}</div></div>
         <div class="dcell"><div class="k">Floor</div><div class="v">${esc(l.floor)}</div></div>
         <div class="dcell"><div class="k">Road access</div><div class="v">${esc(l.road)}</div></div>
-        <div class="dcell"><div class="k">Available from</div><div class="v">${l.availableFrom ? esc(l.availableFrom) : 'Now'}</div></div>
+        <div class="dcell"><div class="k">Available from</div><div class="v">${fmtAvail(l.availableFrom)}</div></div>
       </div></div>
 
       <div class="sec-block"><h3>Location</h3>
@@ -80,18 +78,14 @@ async function viewListing(id) {
           <a class="btn btn-outline btn-sm" target="_blank" rel="noopener" href="${gmapsLink}">${ic('pin')} Open in Google Maps</a>
           <a class="btn btn-outline btn-sm" target="_blank" rel="noopener" href="${dirLink}">${ic('send')} Directions</a>
         </div>` : `<p class="hint-t">The landlord has not pinned this property on the map yet. Ask for directions in the chat.</p>`}
-        <div style="margin-top:10px">
-          ${kv('Walking to Main Gate', walkMin ? walkMin + ' min' : 'Not set')}
-          ${l.walkStage ? kv('Walking to matatu stage', l.walkStage + ' min') : ''}
-        </div>
       </div>
 
       <div class="sec-block"><h3>Utilities</h3>
-        ${kv('Water', esc(l.water) + (l.waterCost ? ' · ' + esc(l.waterCost) : ''))}
+        ${kv('Water', esc(l.water) + (l.waterCost && l.water !== 'Included in rent' ? ' · ' + esc(l.waterCost) : ''))}
         ${l.water === 'Rationed' && l.waterSched ? kv('Water schedule', esc(l.waterSched)) : ''}
         ${kv('Storage tank', y(l.waterTank))}
-        ${kv('Electricity', esc(l.elec) + (l.elecCost ? ' · ' + esc(l.elecCost) : ''))}
-        ${kv('WiFi', esc(l.wifi) + (l.wifiCost ? ' · ' + esc(l.wifiCost) : '') + (l.wifiProvider ? ' (' + esc(l.wifiProvider) + ')' : ''))}
+        ${kv('Electricity', esc(l.elec) + (l.elecCost && !['Included in rent', 'Own token meter', 'Prepaid'].includes(l.elec) ? ' · ' + esc(l.elecCost) : ''))}
+        ${kv('WiFi', esc(l.wifi) + (l.wifiCost && l.wifi === 'Available but paid separately' ? ' · ' + esc(l.wifiCost) : '') + (l.wifiProvider ? ' (' + esc(l.wifiProvider) + ')' : ''))}
         ${kv('Garbage', esc(l.garbage))}
         ${kv('Backup power', esc(l.backup))}
       </div>

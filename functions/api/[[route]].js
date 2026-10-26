@@ -239,7 +239,16 @@ async function ensureSchema(env) {
         ];
         for (const st of mig) { try { await env.DB.prepare(st).run(); } catch (e) { /* column exists */ } }
       }
-      await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_ver','2')").run();
+      if (ver < 3) {
+        // v3: WhatsApp-style edit / delete for me / delete for everyone
+        const mig3 = [
+          'ALTER TABLE messages ADD COLUMN edited INTEGER NOT NULL DEFAULT 0',
+          'ALTER TABLE messages ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0',
+          "ALTER TABLE messages ADD COLUMN hiddenFor TEXT NOT NULL DEFAULT '[]'",
+        ];
+        for (const st of mig3) { try { await env.DB.prepare(st).run(); } catch (e) { /* column exists */ } }
+      }
+      await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('schema_ver','3')").run();
     })().catch(e => { schemaReady = null; throw e; });
   }
   await schemaReady;
@@ -726,8 +735,12 @@ export async function onRequest(context) {
         if (method === 'GET') {
           const after = N(new URL(request.url).searchParams.get('after'));
           const rows = (await env.DB.prepare(
-            `SELECT * FROM (SELECT * FROM messages WHERE convId = ? AND id > ? ORDER BY id DESC LIMIT 300) ORDER BY id ASC`)
-            .bind(cid, after).all()).results || [];
+            `SELECT * FROM (SELECT * FROM messages WHERE convId = ? AND id > ? AND (hiddenFor IS NULL OR hiddenFor = '' OR hiddenFor = '[]' OR hiddenFor NOT LIKE ?) ORDER BY id DESC LIMIT 300) ORDER BY id ASC`)
+            .bind(cid, after, '%"' + u.id + '"%').all()).results || [];
+          rows.forEach(m => {
+            if (m.deleted) m.text = '';           // tombstone — never leak deleted text
+            delete m.hiddenFor;
+          });
           // the viewer is looking at the thread — mark everything read
           await env.DB.prepare('UPDATE messages SET readAt = ? WHERE convId = ? AND senderId != ? AND readAt IS NULL')
             .bind(Date.now(), cid, u.id).run();
@@ -744,6 +757,45 @@ export async function onRequest(context) {
           await env.DB.prepare('UPDATE conversations SET lastAt = ?, lastMsg = ?, typingAt = NULL, typingBy = NULL WHERE id = ?')
             .bind(Date.now(), text.slice(0, 80), cid).run();
           return ok({ id: r.meta.last_row_id });
+        }
+        // edit own message (WhatsApp: within a time window)
+        if (seg[3] && method === 'PATCH') {
+          const mid = N(seg[3]);
+          const m = await env.DB.prepare('SELECT * FROM messages WHERE id = ? AND convId = ?').bind(mid, cid).first();
+          if (!m || m.deleted || m.senderId !== u.id) return bad('Message not found', 404);
+          if (Date.now() - m.createdAt > 15 * 60_000) return bad('Messages can only be edited within 15 minutes');
+          if (!rateLimit('msg:' + u.id, 30, 60_000)) return tooMany();
+          const b = await json_();
+          const text = S(b.text).slice(0, 2000);
+          if (!text) return bad('Type a message');
+          await env.DB.prepare('UPDATE messages SET text = ?, edited = 1 WHERE id = ?').bind(text, mid).run();
+          const last = await env.DB.prepare('SELECT MAX(id) AS mid FROM messages WHERE convId = ?').bind(cid).first();
+          if (last && last.mid === mid) {
+            await env.DB.prepare('UPDATE conversations SET lastMsg = ? WHERE id = ?').bind(text.slice(0, 80), cid).run();
+          }
+          return ok({});
+        }
+        // delete for me (hide only for this viewer) / delete for everyone (sender only)
+        if (seg[3] && method === 'DELETE') {
+          const mid = N(seg[3]);
+          const m = await env.DB.prepare('SELECT * FROM messages WHERE id = ? AND convId = ?').bind(mid, cid).first();
+          if (!m || m.deleted) return bad('Message not found', 404);
+          const scope = S(new URL(request.url).searchParams.get('scope')) === 'all' ? 'all' : 'me';
+          if (scope === 'all') {
+            if (m.senderId !== u.id) return bad('You can only delete your own messages for everyone', 403);
+            await env.DB.prepare('UPDATE messages SET deleted = 1, text = ? WHERE id = ?').bind('', mid).run();
+            const last = await env.DB.prepare('SELECT MAX(id) AS mid FROM messages WHERE convId = ?').bind(cid).first();
+            if (last && last.mid === mid) {
+              await env.DB.prepare('UPDATE conversations SET lastMsg = ? WHERE id = ?').bind('Message deleted', cid).run();
+            }
+          } else {
+            let arr = [];
+            try { arr = JSON.parse(m.hiddenFor || '[]'); } catch (e) { arr = []; }
+            if (!Array.isArray(arr)) arr = [];
+            if (!arr.includes(String(u.id))) arr.push(String(u.id)); // string ids → LIKE-safe
+            await env.DB.prepare('UPDATE messages SET hiddenFor = ? WHERE id = ?').bind(JSON.stringify(arr), mid).run();
+          }
+          return ok({});
         }
       }
       // typing ping (throttled client-side; membership required)

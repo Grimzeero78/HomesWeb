@@ -9,7 +9,7 @@ const LBLANK = () => ({
   bath: 'Shared', kitchen: 'Shared', cooking: 'Yes', balcony: 'No', tile: 'Tiled', ceiling: 'Yes',
   wardrobe: 'No', bed: 'No', desk: 'No',
   security: [], gender: 'Mixed', curfewOn: 'No', curfewTime: '', visitors: 'Daytime only', alcohol: 'No',
-  availableFrom: '', contactPhone: '', photos: [],
+  availableFrom: 'Available now', contactPhone: '', photos: [],
 });
 
 const WIZ_STEPS = ['Basics', 'Location', 'Pricing', 'Utilities', 'Room', 'Rules', 'Availability', 'Photos'];
@@ -54,41 +54,44 @@ async function viewCreate(id) {
       ${sel('floor', 'Floor', FLOORS)}` },
     { t: 'Location', html: () => `
       ${sel('area', 'Area', AREAS)}
-      ${txt('landmark', 'Nearest landmark', 'e.g. opposite Ndagani stage, near the shopping centre')}
+      ${txt('landmark', 'Nearest landmark (optional)', 'e.g. opposite Ndagani stage, near the shopping centre')}
       ${sel('road', 'Road access', ROADS)}
       <div class="sec-block" style="margin-top:14px;padding:13px">
-        <h3 style="font-size:14.5px">${ic('pin')} Pin on map</h3>
-        <p class="hint-t">Pin the exact spot so students find you easily. Walking time to the Main Gate is calculated automatically (80 m per minute).</p>
+        <h3 style="font-size:14.5px">${ic('pin')} Pin the exact spot on map</h3>
+        <p class="hint-t">Tap the map where your compound is. Switch to <b>Satellite</b> (button on the map) to see houses and gates clearly — or search a place below.</p>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <input class="inp" id="pick-q" placeholder="Search a place, e.g. Ndagani" autocomplete="off">
+          <button class="btn btn-outline btn-sm" id="pick-go" type="button" style="flex:none">${ic('search')} Search</button>
+        </div>
         <div id="pick-map" style="margin-top:10px"></div>
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
           <button class="btn btn-outline btn-sm" id="pick-gps" type="button">${ic('pin')} Use my current location</button>
         </div>
         <div style="display:flex;gap:8px;margin-top:8px">
-          <input class="inp" id="pick-lat" placeholder="lat" value="${L.lat ?? ''}">
-          <input class="inp" id="pick-lng" placeholder="lng" value="${L.lng ?? ''}">
+          <input class="inp" id="pick-lat" placeholder="(optional) lat" value="${L.lat ?? ''}">
+          <input class="inp" id="pick-lng" placeholder="(optional) lng" value="${L.lng ?? ''}">
         </div>
         <p class="hint-t" id="pick-walk" style="margin-top:8px"></p>
-      </div>
-      ${txt('walkGate', 'Walk to Main Gate (minutes)', 'auto-calculated', 'number')}
-      ${txt('walkStage', 'Walk to nearest matatu stage (minutes)', 'e.g. 3', 'number')}` },
+      </div>` },
     { t: 'Pricing', html: () => `
       ${txt('rent', 'Rent (KES)', 'e.g. 6500', 'number')}
       ${sel('period', 'Payment period', PERIODS)}
-      ${txt('deposit', 'Deposit (KES)', 'e.g. 6500 — leave empty if none', 'number')}
-      ${txt('fees', 'Move-in fees', 'e.g. Water connection KES 500 — or "None"')}
+      ${txt('deposit', 'Deposit (KES) — optional', 'e.g. 6500 — leave empty if none', 'number')}
+      ${txt('fees', 'Move-in fees (optional)', 'e.g. Water connection KES 500 — or "None"')}
       <label class="check"><input type="checkbox" id="w-neg" ${L.negotiable ? 'checked' : ''}> Rent is negotiable</label>
-      <label class="lbl">Payment terms & house rules</label>
+      <label class="lbl">Payment terms & house rules (optional)</label>
       <textarea class="inp" data-k="terms" placeholder="e.g. Rent due by 5th of the month. One month deposit."> ${esc(L.terms)}</textarea>` },
     { t: 'Utilities', html: () => `
       ${sel('water', 'Water', WATER)}
-      ${txt('waterCost', 'Water cost (if paid)', 'e.g. KES 200/month or per jerrican')}
+      <div id="w-wcost">${txt('waterCost', 'Water cost', 'e.g. KES 200 per month or per jerrican — optional')}</div>
       <div id="w-sched-box">${txt('waterSched', 'Water schedule (if rationed)', 'e.g. Tuesday & Friday evenings')}</div>
       ${yesNo('waterTank', 'Has storage tank / backup tank?')}
       ${sel('elec', 'Electricity', ELEC)}
-      ${txt('elecCost', 'Electricity cost (if paid)', 'e.g. own tokens, ~KES 300/week')}
+      <div id="w-ecost">${txt('elecCost', 'Electricity cost', 'e.g. KES 300 per week, shared — optional')}</div>
+      <p class="hint-t">Own token meter? Leave the cost empty — each tenant buys their own tokens.</p>
       ${sel('wifi', 'WiFi / internet', WIFI)}
-      ${txt('wifiCost', 'WiFi cost (if paid)', 'e.g. KES 300/month shared')}
-      ${txt('wifiProvider', 'WiFi provider', 'e.g. Faiba, Safaricom, Starlink — optional')}
+      <div id="w-wificost">${txt('wifiCost', 'WiFi cost', 'e.g. KES 300 per month shared — optional')}</div>
+      ${txt('wifiProvider', 'WiFi provider (optional)', 'e.g. Faiba, Safaricom, Starlink')}
       ${sel('garbage', 'Garbage disposal', GARBAGE)}
       ${sel('backup', 'Backup power', BACKUP)}` },
     { t: 'Room & building', html: () => `
@@ -111,9 +114,12 @@ async function viewCreate(id) {
       ${yesNo('alcohol', 'Alcohol allowed in the compound?')}` },
     { t: 'Availability & contact', html: () => `
       <label class="lbl">Available from</label>
-      <input class="inp" type="date" data-k="availableFrom" value="${esc(L.availableFrom)}">
-      <p class="hint-t">Leave today's date if it is vacant right now.</p>
-      ${txt('contactPhone', 'Contact phone / WhatsApp', 'Defaults to your profile number')}
+      <select class="inp" id="w-avail">${AVAIL_OPTIONS.map(o => `<option ${L.availableFrom === o || (!AVAIL_OPTIONS.includes(L.availableFrom) && o === 'Available now' && !L.availableFrom) ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>
+      <div id="w-avail-date" style="display:none">
+        <input class="inp" type="date" data-k="availableFrom" value="${/^\d{4}-\d{2}-\d{2}/.test(L.availableFrom || '') ? esc(L.availableFrom) : ''}">
+      </div>
+      <p class="hint-t">Pick "Available now" if the room is vacant today.</p>
+      ${txt('contactPhone', 'Contact phone / WhatsApp (optional)', 'Defaults to your profile number')}
       <div class="notice notice-g" style="margin-top:14px">${ic('shield')}<span>Your number is only shown to signed-in users. ChukaHomes never collects any payment on your behalf.</span></div>` },
     { t: 'Photos & publish', html: () => `
       <label class="lbl">Photos (3–8) — first photo is the cover</label>
@@ -142,6 +148,8 @@ async function viewCreate(id) {
     v.querySelectorAll('[data-k]').forEach(el => {
       const k = el.dataset.k;
       const ev = el.tagName === 'SELECT' || el.type === 'date' ? 'change' : 'input';
+      // a select always LOOKS selected — adopt its visible value so validation matches what the user sees
+      if (el.tagName === 'SELECT' && !L[k]) L[k] = el.value;
       el.addEventListener(ev, () => { L[k] = el.value; });
     });
     v.querySelectorAll('.seg[data-k]').forEach(seg => seg.querySelectorAll('button').forEach(b => b.onclick = () => {
@@ -149,10 +157,32 @@ async function viewCreate(id) {
       b.classList.add('on'); L[seg.dataset.k] = b.dataset.v;
     }));
     const neg = v.querySelector('#w-neg'); if (neg) neg.onchange = () => { L.negotiable = neg.checked; };
-    const schedBox = v.querySelector('#w-sched-box'); if (schedBox) schedBox.style.display = L.water === 'Rationed' ? '' : 'none';
-    const ws = v.querySelector('[data-k="water"]'); if (ws) ws.addEventListener('change', () => schedBox.style.display = L.water === 'Rationed' ? '' : 'none');
+    // ---- utilities: conditional cost fields ----
+    const wcostBox = v.querySelector('#w-wcost'), ecostBox = v.querySelector('#w-ecost'), wificostBox = v.querySelector('#w-wificost');
+    const wsel = v.querySelector('[data-k="water"]'), esel = v.querySelector('[data-k="elec"]'), wifisel = v.querySelector('[data-k="wifi"]');
+    const syncUtilBoxes = () => {
+      if (wcostBox) wcostBox.style.display = L.water === 'Included in rent' ? 'none' : '';
+      if (ecostBox) ecostBox.style.display = (L.elec === 'Included in rent' || L.elec === 'Own token meter' || L.elec === 'Prepaid') ? 'none' : '';
+      if (wificostBox) wificostBox.style.display = L.wifi === 'Available but paid separately' ? '' : 'none';
+    };
+    syncUtilBoxes();
+    if (wsel) wsel.addEventListener('change', syncUtilBoxes);
+    if (esel) esel.addEventListener('change', syncUtilBoxes);
+    if (wifisel) wifisel.addEventListener('change', syncUtilBoxes);
+    const schedBox = v.querySelector('#w-sched-box');
+    if (schedBox) { schedBox.style.display = L.water === 'Rationed' ? '' : 'none'; if (wsel) wsel.addEventListener('change', () => schedBox.style.display = L.water === 'Rationed' ? '' : 'none'); }
     const cfBox = v.querySelector('#w-curfew-box'); if (cfBox) cfBox.style.display = L.curfewOn === 'Yes' ? '' : 'none';
     const co = v.querySelector('[data-k="curfewOn"]'); if (co) co.addEventListener('click', () => setTimeout(() => cfBox.style.display = L.curfewOn === 'Yes' ? '' : 'none', 0));
+    // ---- availability: preset options, date only when picked ----
+    const availSel = v.querySelector('#w-avail'), availDate = v.querySelector('#w-avail-date');
+    if (availSel && availDate) {
+      if (/^\d{4}-\d{2}-\d{2}/.test(L.availableFrom || '')) availSel.value = 'Pick a date…';
+      availDate.style.display = availSel.value === 'Pick a date…' ? '' : 'none';
+      availSel.addEventListener('change', () => {
+        availDate.style.display = availSel.value === 'Pick a date…' ? '' : 'none';
+        if (availSel.value !== 'Pick a date…') L.availableFrom = availSel.value;
+      });
+    }
     const secBox = v.querySelector('#w-sec'); if (secBox) secBox.onclick = e => {
       const b = e.target.closest('.chip'); if (!b) return;
       b.classList.toggle('on');
@@ -191,13 +221,11 @@ async function viewCreate(id) {
   function wireLocation() {
     const box = v.querySelector('#pick-map');
     const latIn = v.querySelector('#pick-lat'), lngIn = v.querySelector('#pick-lng');
-    const walkEl = v.querySelector('#pick-walk');
+    const statusEl = v.querySelector('#pick-walk');
     const setPos = (lat, lng) => {
       L.lat = +(+lat).toFixed(6); L.lng = +(+lng).toFixed(6);
       latIn.value = L.lat; lngIn.value = L.lng;
-      const w = walkMinutes(L.lat, L.lng);
-      if (w) { L.walkGate = w; const wg = v.querySelector('[data-k="walkGate"]'); if (wg) wg.value = w; }
-      walkEl.textContent = w ? `Approx. ${w} min walk to the Main Gate` : '';
+      statusEl.innerHTML = `${ic('check')} Spot pinned — students will see it on the map.`;
     };
     latIn.addEventListener('change', () => { if (latIn.value && lngIn.value) setPos(latIn.value, lngIn.value); });
     lngIn.addEventListener('change', () => { if (latIn.value && lngIn.value) setPos(latIn.value, lngIn.value); });
@@ -209,15 +237,38 @@ async function viewCreate(id) {
         () => toast('Could not get your location — check location permission', true)
       );
     };
+    // place search (free OpenStreetMap service) — jump straight to a popular place
+    const qIn = v.querySelector('#pick-q'), goBtn = v.querySelector('#pick-go');
+    const doSearch = async () => {
+      const raw = qIn.value.trim();
+      if (!raw) return;
+      const q = /chuka|kenya|ndagani|mungoni/i.test(raw) ? raw : raw + ', Chuka, Kenya';
+      goBtn.disabled = true; toast('Searching…');
+      const hit = await geocodePlace(q);
+      goBtn.disabled = false;
+      if (!hit) { toast('Place not found — try the map or GPS instead', true); return; }
+      setPos(hit.lat, hit.lng);
+      if (window._pmap) window._pmap.flyTo(hit.lat, hit.lng);
+    };
+    goBtn.onclick = doSearch;
+    qIn.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
+
     loadLeaflet().then(() => {
       box.innerHTML = '<div id="pm-inner" style="height:240px;border-radius:12px;overflow:hidden;border:1px solid var(--line)"></div>';
       const inner = box.querySelector('#pm-inner');
       const map = osmMap(inner, { center: [L.lat ?? GATE.lat, L.lng ?? GATE.lng], zoom: L.lat ? 17 : 14 });
       let marker = null;
-      window._pmap = { placeMarker: (a, b) => { placeMarker(a, b); map.panTo([a, b]); } };
+      // NOTE: `L` here is the wizard listing object (shadows Leaflet's global L) —
+      // always use window.L for Leaflet calls inside viewCreate. This shadowing was
+      // the bug that silently stopped click/GPS/search from ever placing a pin.
+      const LF = () => window.L;
+      window._pmap = {
+        placeMarker: (a, b) => { placeMarker(a, b); map.panTo([a, b]); },
+        flyTo: (a, b) => { placeMarker(a, b); map.flyTo([a, b], 16, { duration: 0.8 }); },
+      };
       function placeMarker(lat, lng) {
         if (marker) marker.remove();
-        marker = L.marker([lat, lng], { icon: pickIcon(), keyboard: false }).addTo(map);
+        marker = LF().marker([lat, lng], { icon: pickIcon(), keyboard: false }).addTo(map);
       }
       map.on('click', e => { setPos(e.latlng.lat, e.latlng.lng); placeMarker(e.latlng.lat, e.latlng.lng); });
       if (L.lat != null) placeMarker(L.lat, L.lng);
@@ -264,6 +315,13 @@ async function viewCreate(id) {
   async function publish() {
     const btn = v.querySelector('#wz-next'); btn.disabled = true; btn.textContent = editingId ? 'Saving…' : 'Publishing…';
     if (!L.contactPhone) L.contactPhone = state.user.phone || '';
+    // clear costs that don't apply (keeps listings honest and tidy)
+    if (L.water === 'Included in rent') L.waterCost = '';
+    if (L.water !== 'Rationed') L.waterSched = '';
+    if (L.elec === 'Included in rent' || L.elec === 'Own token meter' || L.elec === 'Prepaid') L.elecCost = '';
+    if (L.wifi !== 'Available but paid separately') L.wifiCost = '';
+    if (L.curfewOn !== 'Yes') L.curfewTime = '';
+    if (L.availableFrom === 'Pick a date…' && !/^\d{4}-\d{2}-\d{2}/.test(L.availableFrom || '')) L.availableFrom = 'Available now';
     const body = { ...L, photos: L.photos };
     const res = editingId
       ? await api('/listings/' + editingId, { method: 'PUT', body })

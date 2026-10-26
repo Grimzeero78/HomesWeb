@@ -1,4 +1,4 @@
-// ChukaHomes — Map view (free & keyless: OpenStreetMap + Leaflet — no API key, no billing)
+// ChukaHomes — Map view (free & keyless: Leaflet + OpenStreetMap/CARTO/Esri — no API key, no billing)
 let leafletPromise = null;
 function loadLeaflet() {
   if (window.L) return Promise.resolve();
@@ -24,21 +24,51 @@ function loadLeaflet() {
 
 function osmMap(el, opts) {
   const map = L.map(el, { ...opts });
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  // Default basemap: Esri World Street Map — road names + popular places clearly written (best for directions)
+  const streets = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Tiles &copy; <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a> &mdash; Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community',
+  }).addTo(map);
+  // Satellite imagery — best for pinpointing an exact plot/gate
+  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Imagery &copy; <a href="https://www.esri.com" target="_blank" rel="noopener">Esri</a>, Maxar, Earthstar Geographics',
+  });
+  // Classic OSM streets
+  const osmStd = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
-  }).addTo(map);
+  });
+  L.control.layers(
+    { 'Map — roads & places': streets, 'Satellite': sat, 'Streets (classic)': osmStd },
+    null, { position: 'topright' }
+  ).addTo(map);
   return map;
+}
+
+// shared geocoder (free Nominatim service, cached in localStorage for 7 days)
+async function geocodePlace(q) {
+  const key = 'ch_geo:' + q;
+  try { const c = localStorage.getItem(key); if (c) return JSON.parse(c); } catch (e) { /* ignore */ }
+  try {
+    const r = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=ke&q=' + encodeURIComponent(q), { headers: { Accept: 'application/json' } });
+    const j = await r.json();
+    const hit = j && j[0] ? { lat: +j[0].lat, lng: +j[0].lon } : null;
+    try { localStorage.setItem(key, JSON.stringify(hit)); } catch (e) { /* ignore */ }
+    return hit;
+  } catch (e) { return null; }
 }
 
 const gateIcon = () => L.divIcon({ className: '', html: '<div class="pin-gate">GATE</div>', iconSize: [48, 24], iconAnchor: [24, 12] });
 const priceIcon = (txt, boosted) => L.divIcon({ className: '', html: `<div class="pin-price${boosted ? ' pin-b' : ''}">${txt}</div>`, iconSize: [46, 28], iconAnchor: [23, 14] });
 const pickIcon = () => L.divIcon({ className: '', html: '<div class="pin-pick"></div>', iconSize: [20, 20], iconAnchor: [10, 10] });
+const landIcon = (txt) => L.divIcon({ className: '', html: `<div class="pin-land">${txt}</div>`, iconSize: [110, 22], iconAnchor: [55, 24] });
 
 async function viewMap() {
   const v = document.getElementById('view');
   v.innerHTML = `
     <div class="sec-h"><h2>Map of rooms near campus</h2></div>
+    <p class="hint-t" style="margin:-6px 0 10px">Use the layers button (top right of the map) to switch to <b>Satellite</b> or street view.</p>
     <div class="map-wrap">
       <div class="map-side" id="map-side">${skeletonGrid(2)}</div>
       <div id="mapbox"><div class="gm-err">Loading map…</div></div>
@@ -61,13 +91,13 @@ async function viewMap() {
           <div class="conv-top"><span class="conv-name">${kes(l.rent)}/${perShort(l.period)}</span>
             ${l.boostedUntil && l.boostedUntil > Date.now() ? `<span class="pill pill-o">${ic('bolt')}Boost</span>` : ''}</div>
           <div class="conv-last">${esc(l.title)}</div>
-          <div class="conv-sub"><span style="font-size:11.5px;color:var(--ink3)">${esc(l.area)}${l.walkGate ? ' · ' + l.walkGate + ' min' : ''}</span></div>
+          <div class="conv-sub"><span style="font-size:11.5px;color:var(--ink3)">${esc(l.area)}${l.landmark ? ' · ' + esc(l.landmark) : ''}</span></div>
         </div>
       </a>`).join('');
     side.querySelectorAll('a[data-id]').forEach(a => a.addEventListener('click', () => {
       if (window._lmap && a.dataset.lat) {
         window._lmap.panTo([+a.dataset.lat, +a.dataset.lng]);
-        window._lmap.setZoom(16);
+        window._lmap.setZoom(17);
       }
     }));
   }
@@ -79,8 +109,18 @@ async function viewMap() {
     const map = osmMap(box, { center: [GATE.lat, GATE.lng], zoom: 14, scrollWheelZoom: false });
     window._lmap = map;
 
+    // Chuka University Main Gate — exact, always shown
     L.marker([GATE.lat, GATE.lng], { icon: gateIcon(), keyboard: false, zIndexOffset: 500 }).addTo(map)
       .bindTooltip('Chuka University Main Gate', { permanent: true, direction: 'bottom', offset: [0, 8], className: 'gate-tip' });
+
+    // Popular places around campus (geocoded from OpenStreetMap, cached) — easy directions for students
+    [['Chuka Town', 'Chuka, Kenya'], ['Ndagani', 'Ndagani, Chuka, Kenya'], ['Mungoni', 'Mungoni, Chuka, Kenya']]
+      .forEach(async ([name, q]) => {
+        const hit = await geocodePlace(q);
+        if (hit && Number.isFinite(hit.lat)) {
+          L.marker([hit.lat, hit.lng], { icon: landIcon(name), keyboard: false, interactive: false, zIndexOffset: 100 }).addTo(map);
+        }
+      });
 
     const bounds = [[GATE.lat, GATE.lng]];
     withPos.forEach(l => {
@@ -90,7 +130,7 @@ async function viewMap() {
           ${l.thumb ? `<img src="${l.thumb}" style="width:100%;height:90px;object-fit:cover;border-radius:8px">` : ''}
           <div style="font-weight:800;margin-top:6px">${kes(l.rent)}/${perShort(l.period)}</div>
           <div style="font-size:12.5px;color:#444">${esc(l.title)}</div>
-          <div style="font-size:11.5px;color:#777">${esc(l.area)}${l.walkGate ? ' · ' + l.walkGate + ' min walk' : ''}</div>
+          <div style="font-size:11.5px;color:#777">${esc(l.area)}${l.landmark ? ' · ' + esc(l.landmark) : ''}</div>
           <a href="#/listing/${l.id}" style="display:inline-block;margin-top:6px;color:#e0620f;font-weight:700;font-size:12.5px">Open listing →</a>
         </div>`)
         .addTo(map);

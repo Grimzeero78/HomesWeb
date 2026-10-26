@@ -351,3 +351,38 @@ textarea.inp{min-height:84px;resize:vertical}
 .gate-tip{background:#fff;border:1px solid var(--line);box-shadow:0 2px 6px rgba(8,14,10,.18);font-weight:700;font-size:10px;color:#0a3d24;padding:2px 7px;border-radius:6px}
 .gate-tip::before{display:none}
 .leaflet-container{font-family:'Instrument Sans',system-ui,sans-serif}
+
+/* ===== chat: WhatsApp-style message actions, edit mode, quick replies ===== */
+.bub{position:relative}
+.bub-del{opacity:.72;font-style:italic;display:flex;align-items:center;gap:6px}
+.bub-del svg{width:12px;height:12px;flex:none}
+.bub-del i{opacity:.9}
+.bub-ed{font-size:10px;opacity:.75;margin-left:5px;font-style:italic}
+.bubble-text-prev{font-size:13px;color:var(--ink2);background:var(--cream);border:1px solid var(--line);
+  border-radius:10px;padding:9px 11px;max-height:72px;overflow:hidden;word-break:break-word}
+.bact{display:flex;align-items:center;gap:10px;width:100%;padding:11px 12px;border:1px solid var(--line);
+  border-radius:12px;background:#fff;font:inherit;font-size:13.5px;font-weight:600;color:var(--ink);text-align:left}
+.bact svg{width:16px;height:16px;color:var(--pine);flex:none}
+.bact:hover{border-color:var(--pine)}
+.bact-d{color:var(--bad)}
+.bact-d svg{color:var(--bad)}
+.edit-bar{display:flex;align-items:center;gap:8px;background:var(--ember-mist);color:var(--ember-deep);
+  border-radius:10px;padding:7px 11px;margin-bottom:8px;font-size:12.5px;font-weight:700}
+.edit-bar svg{width:14px;height:14px}
+.edit-x{display:flex;align-items:center;gap:4px;border:none;background:transparent;color:var(--ember-deep);
+  font:inherit;font-size:12px;font-weight:800;padding:4px 6px;border-radius:8px}
+.edit-x svg{width:12px;height:12px}
+.edit-x:hover{background:rgba(224,98,15,.12)}
+.qr-row{display:flex;gap:7px;overflow-x:auto;padding:8px 0 2px;scrollbar-width:none}
+.qr-row::-webkit-scrollbar{display:none}
+.qr-chip{white-space:nowrap;border:1.5px solid var(--line);background:#fff;border-radius:99px;
+  padding:7px 13px;font:inherit;font-size:12.5px;font-weight:600;color:var(--pine-deep);flex:none}
+.qr-chip:hover{border-color:var(--pine);background:var(--mist)}
+
+/* ===== map: popular-place label pins ===== */
+.pin-land{background:#fff;border:1.5px solid var(--pine);color:var(--pine-deep);font:700 11px/1.4 var(--body);
+  padding:2px 9px;border-radius:99px;box-shadow:0 1px 4px rgba(23,37,29,.18);text-align:center;white-space:nowrap}
+
+/* keep leaflet layer control compact on phones */
+.leaflet-control-layers{border-radius:10px !important;box-shadow:0 2px 10px rgba(23,37,29,.16) !important}
+.leaflet-control-layers-expanded{padding:8px 12px !important;font:600 12px/1.7 var(--body) !important}

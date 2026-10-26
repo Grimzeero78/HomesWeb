@@ -1,5 +1,20 @@
 // ChukaHomes — Chats: conversation list + live thread (2.5s polling)
+// WhatsApp-style actions: long-press a bubble → Copy / Edit / Delete for me / Delete for everyone
+// Unique: Quick-reply chips (one-tap common questions) — role aware
 let chatTimer = null;
+
+const QR_STUDENT = [
+  'Is it still available?',
+  'Can I view it this weekend?',
+  'What is the total monthly cost?',
+  'Is water included in the rent?',
+];
+const QR_LANDLORD = [
+  'Yes, it is available.',
+  'When would you like to come for viewing?',
+  'Viewings: Mon–Sat, 8 AM – 6 PM.',
+  'Deposit is one month rent.',
+];
 
 async function viewChats() {
   if (!state.user) { location.hash = '#/login'; return; }
@@ -43,6 +58,10 @@ async function viewThread(id) {
   if (!info.ok) { v.innerHTML = emptyBox('Conversation not found', info.error); return; }
   const { listing, other } = info;
   const me = state.user.id;
+  const iAmLandlord = state.user.role !== 'STUDENT';
+
+  const quickReplies = (iAmLandlord ? QR_LANDLORD : QR_STUDENT).map(q =>
+    `<button type="button" class="qr-chip">${esc(q)}</button>`).join('');
 
   v.innerHTML = `
     <div class="thread-head">
@@ -59,6 +78,11 @@ async function viewThread(id) {
     </div>
     <div class="thread">
       <div class="thread-msgs" id="th-msgs"></div>
+      <div class="qr-row" id="th-qr">${quickReplies}</div>
+      <div class="edit-bar" id="th-editbar" hidden>
+        <span style="flex:1">${ic('edit')} Editing message</span>
+        <button type="button" class="edit-x" id="th-editcancel">${ic('x')} Cancel</button>
+      </div>
       <div class="thread-bar">
         <input class="inp" id="th-inp" placeholder="Type a message…" autocomplete="off">
         <button class="btn btn-green" id="th-send" style="flex:none">${ic('send')}</button>
@@ -71,12 +95,116 @@ async function viewThread(id) {
 
   const msgsEl = v.querySelector('#th-msgs');
   const inp = v.querySelector('#th-inp');
+  const editBar = v.querySelector('#th-editbar');
   let lastId = 0;
+  let editingMid = null; // message currently being edited
+
+  const timeStr = ts => new Date(ts).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' });
 
   function bubble(m) {
     const mine = m.senderId === me;
-    return `<div class="bub ${mine ? 'me' : ''}">${esc(m.text)}<span class="bub-time">${new Date(m.createdAt).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' })}</span></div>`;
+    if (m.deleted) {
+      return `<div class="bub ${mine ? 'me' : ''} bub-del" data-mid="${m.id}" data-ts="${m.createdAt}">
+        ${ic('x')}<i>${mine ? 'You deleted this message' : 'This message was deleted'}</i>
+        <span class="bub-time">${timeStr(m.createdAt)}</span></div>`;
+    }
+    return `<div class="bub ${mine ? 'me' : ''}" data-mid="${m.id}" data-ts="${m.createdAt}" data-text="${esc(m.text)}">${esc(m.text)}${m.edited ? '<span class="bub-ed">edited</span>' : ''}<span class="bub-time">${timeStr(m.createdAt)}</span></div>`;
   }
+
+  function retypeBubble(m) {
+    const b = msgsEl.querySelector(`.bub[data-mid="${m.id}"]`);
+    if (!b) return;
+    const tmp = document.createElement('div');
+    tmp.innerHTML = bubble(m);
+    b.replaceWith(tmp.firstElementChild);
+  }
+
+  // ----- message actions (long-press on touch, right-click on desktop) -----
+  function openBubMenu(bub) {
+    if (bub.classList.contains('bub-del')) return;
+    const mid = +bub.dataset.mid;
+    const mine = bub.classList.contains('me');
+    const fresh = Date.now() - (+bub.dataset.ts) < 15 * 60_000;
+    const item = (icon, label, act, danger) =>
+      `<button type="button" class="bact ${danger ? 'bact-d' : ''}" data-act="${act}">${ic(icon)} ${label}</button>`;
+    const acts = [item('doc', 'Copy', 'copy')];
+    if (mine && fresh) acts.push(item('edit', 'Edit', 'edit'));
+    acts.push(item('eye', 'Delete for me', 'delme'));
+    if (mine) acts.push(item('trash', 'Delete for everyone', 'delall', true));
+    modal(`<h3 style="font-size:15px;margin-bottom:10px">Message actions</h3>
+      <div class="bubble-text-prev">${esc(bub.dataset.text || '')}</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:12px">${acts.join('')}</div>`,
+      m => {
+        m.querySelectorAll('.bact').forEach(b => b.onclick = () => {
+          const act = b.dataset.act;
+          closeModal();
+          if (act === 'copy') copyText(bub.dataset.text || '');
+          else if (act === 'edit') startEdit(bub);
+          else if (act === 'delme') deleteForMe(mid, bub);
+          else if (act === 'delall') confirmDlg('Delete for everyone?',
+            'This message will be removed for both of you. This cannot be undone.',
+            'Delete', () => deleteForAll(mid, bub), true);
+        });
+      });
+  }
+
+  async function copyText(t) {
+    try { await navigator.clipboard.writeText(t); toast('Copied to clipboard'); }
+    catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = t; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); toast('Copied to clipboard'); } catch (e2) { toast('Could not copy', true); }
+      ta.remove();
+    }
+  }
+
+  function startEdit(bub) {
+    editingMid = +bub.dataset.mid;
+    inp.value = bub.dataset.text || '';
+    editBar.hidden = false;
+    inp.focus();
+    inp.scrollIntoView({ block: 'nearest' });
+  }
+  function cancelEdit() {
+    editingMid = null;
+    inp.value = '';
+    editBar.hidden = true;
+  }
+  v.querySelector('#th-editcancel').onclick = cancelEdit;
+
+  async function deleteForMe(mid, bub) {
+    const r = await api('/convs/' + id + '/messages/' + mid + '?scope=me', { method: 'DELETE' });
+    if (!r.ok) { toast(r.error, true); return; }
+    bub.remove();
+  }
+  async function deleteForAll(mid, bub) {
+    const r = await api('/convs/' + id + '/messages/' + mid + '?scope=all', { method: 'DELETE' });
+    if (!r.ok) { toast(r.error, true); return; }
+    retypeBubble({ id: mid, senderId: me, createdAt: +bub.dataset.ts, deleted: 1 });
+  }
+
+  let lpTimer = null;
+  msgsEl.addEventListener('contextmenu', e => {
+    const b = e.target.closest('.bub');
+    if (!b) return;
+    e.preventDefault();
+    openBubMenu(b);
+  });
+  msgsEl.addEventListener('touchstart', e => {
+    const b = e.target.closest('.bub');
+    if (!b || b.classList.contains('bub-del')) return;
+    lpTimer = setTimeout(() => { lpTimer = null; if (navigator.vibrate) navigator.vibrate(25); openBubMenu(b); }, 450);
+  }, { passive: true });
+  ['touchend', 'touchmove', 'touchcancel'].forEach(ev =>
+    msgsEl.addEventListener(ev, () => { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } }, { passive: true }));
+
+  // ----- quick replies: tap to fill the input (edit before sending if you like) -----
+  v.querySelectorAll('.qr-chip').forEach(chip => chip.onclick = () => {
+    cancelEdit();          // clears edit state + input first
+    inp.value = chip.textContent;
+    inp.focus();
+    inp.scrollIntoView({ block: 'nearest' });
+  });
 
   async function poll(initial) {
     const r = await api('/convs/' + id + '/messages?after=' + lastId);
@@ -105,6 +233,14 @@ async function viewThread(id) {
   async function send() {
     const text = inp.value.trim();
     if (!text) return;
+    if (editingMid) {
+      const r = await api('/convs/' + id + '/messages/' + editingMid, { method: 'PATCH', body: { text } });
+      if (!r.ok) { toast(r.error, true); return; }
+      const bub = msgsEl.querySelector(`.bub[data-mid="${editingMid}"]`);
+      if (bub) retypeBubble({ id: editingMid, senderId: me, createdAt: +bub.dataset.ts, text, edited: 1 });
+      cancelEdit();
+      return;
+    }
     inp.value = '';
     const r = await api('/convs/' + id + '/messages', { body: { text } });
     if (!r.ok) { toast(r.error, true); inp.value = text; return; }
@@ -118,5 +254,5 @@ async function viewThread(id) {
   await poll(true);
   clearInterval(chatTimer);
   chatTimer = setInterval(() => poll(false), 2500);
-  onLeave(() => clearInterval(chatTimer));
+  onLeave(() => { clearInterval(chatTimer); });
 }
