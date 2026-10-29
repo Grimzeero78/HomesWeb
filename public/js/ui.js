@@ -128,6 +128,8 @@ function ic(name, cls) {
     edit: '<path d="M4 20h4L20 8l-4-4L4 16v4z"/>',
     send: '<path d="M21 3 10.5 13.5M21 3l-7 18-3.5-7.5L3 10l18-7z"/>',
     star: '<path d="m12 3 2.7 5.8 6.3.8-4.6 4.4 1.2 6.2-5.6-3.1L6.4 20l1.2-6.2L3 9.6l6.3-.8L12 3z"/>',
+    sun: '<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.4M12 19.1v2.4M2.5 12h2.4M19.1 12h2.4M5.2 5.2l1.7 1.7M17.1 17.1l1.7 1.7M18.8 5.2l-1.7 1.7M6.9 17.1l-1.7 1.7"/>',
+    moon: '<path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a7 7 0 1 0 10.7 10.7z"/>',
   };
   // width/height attrs = safe intrinsic default (18px); CSS rules override per context.
   // Without these, an SVG with only a viewBox blows up to fill flex/grid containers.
@@ -199,6 +201,64 @@ function lightbox(src) {
   document.getElementById('lightbox-img').src = src;
   lb.hidden = false;
   lb.onclick = () => { lb.hidden = true; };
+}
+
+// ---------- light / dark mode ----------
+// Stored per device in localStorage; first visit follows the phone/PC system setting.
+const THEME_META = { light: '#0e5a33', dark: '#141713' };
+function applyTheme(t, save) {
+  t = t === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = t;
+  if (save) { try { localStorage.setItem('ch_theme', t); } catch (e) {} }
+  const m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.setAttribute('content', THEME_META[t]);
+  // keep every toggle button on the page in sync (topbar, side nav, profile row).
+  // Rich rows (profile) keep their own markup — we only swap the icon + On/Off text.
+  document.querySelectorAll('[data-theme-toggle]').forEach(b => {
+    const dark = t === 'dark';
+    const st = b.querySelector('.theme-state');
+    if (st) {
+      st.textContent = dark ? 'On' : 'Off';
+      const sv = b.querySelector('svg');
+      if (sv) sv.outerHTML = ic(dark ? 'sun' : 'moon');
+    } else {
+      b.innerHTML = `${ic(dark ? 'sun' : 'moon')}<span class="theme-lbl">${dark ? 'Light mode' : 'Dark mode'}</span>`;
+      b.title = dark ? 'Switch to light mode' : 'Switch to dark mode';
+    }
+  });
+}
+function currentTheme() {
+  try {
+    const saved = localStorage.getItem('ch_theme');
+    if (saved === 'dark' || saved === 'light') return saved;
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+  } catch (e) {}
+  return 'light';
+}
+function toggleTheme() { applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark', true); }
+
+// ---------- admin notification badges ----------
+// The API returns one tiny row: how many verifications / boosts / reports are waiting.
+// renderAdminBadges() lights up every badge on the page — admin tabs, side-nav Admin
+// link, profile row — so Isaac sees "something new" the moment it arrives.
+function renderAdminBadges(c) {
+  if (!c) return;
+  const set = (key, n) => {
+    document.querySelectorAll(`[data-adm-badge="${key}"]`).forEach(el => {
+      if (n > 0) { el.textContent = n > 9 ? '9+' : n; el.hidden = false; }
+      else el.hidden = true;
+    });
+  };
+  const total = (c.verifications || 0) + (c.boosts || 0) + (c.reports || 0);
+  set('verifications', c.verifications || 0);
+  set('boosts', c.boosts || 0);
+  set('reports', c.reports || 0);
+  set('total', total);
+}
+async function refreshAdminCounts() {
+  if (!state.user || state.user.role !== 'ADMIN') return;
+  const r = await api('/admin/counts');
+  if (r.ok) renderAdminBadges(r.counts || r);
 }
 
 // ---------- listing card ----------

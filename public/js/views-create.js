@@ -22,12 +22,14 @@ async function viewCreate(id) {
     return;
   }
   const v = document.getElementById('view');
+  const gen = routeGen; // if the user navigates away mid-fetch, don't paint over the new page
   let L = LBLANK();
   let editingId = null;
 
   if (id) {
     v.innerHTML = `<div class="pageload"><div class="skel" style="height:200px"></div><div class="skel" style="height:60px"></div></div>`;
     const r = await api('/listings/' + id);
+    if (stale(gen)) return;
     if (!r.ok || !r.isOwner) { v.innerHTML = emptyBox('Cannot edit', r.error || 'Not your listing.'); return; }
     L = { ...L, ...r.listing, security: parseSecurity(r.listing.security),
       photos: (r.photos || []).map(p => p.url), thumbs: (r.photos || []).map(p => p.thumb || '') };
@@ -139,12 +141,29 @@ async function viewCreate(id) {
         <div class="wiz-bar"><i style="width:${((step + 1) / 8) * 100}%"></i></div>
         <span class="wiz-step">${esc(st.t)}</span>
       </div>
+      <div class="wiz-steps">${WIZ_STEPS.map((nm, i) =>
+        `<button type="button" class="ws ${i === step ? 'on' : (i < step ? 'done' : '')}" data-step="${i}" aria-label="Go to section ${i + 1}: ${esc(nm)}"><b>${i + 1}</b> ${esc(nm)}</button>`).join('')}</div>
       <div class="wiz-card"><h2>${esc(st.t)}</h2><div id="wiz-fields">${st.html()}</div>
+        ${editingId && step < 7 ? `<button class="btn btn-outline btn-block" id="wz-save" style="margin-top:14px">${ic('check')} Save changes now</button>
+        <p class="hint-t" style="margin-top:6px">Editing — jump to any section above and save from there. No need to walk through all 8 steps.</p>` : ''}
         <div class="wiz-nav">
           ${step > 0 ? '<button class="btn btn-outline" id="wz-back">Back</button>' : '<button class="btn btn-outline" id="wz-cancel">Cancel</button>'}
           <button class="btn btn-green" id="wz-next">${step === 7 ? (editingId ? 'Save changes' : 'Publish listing') : 'Next'}</button>
         </div>
       </div>`;
+
+    // tappable section chips — jump straight to the section you want (e.g. straight to
+    // section 5 when editing). Moving BACK is always free; moving forward first checks
+    // the fields on the section you are leaving so required data is never skipped.
+    v.querySelectorAll('.ws').forEach(b => b.onclick = () => {
+      const t = +b.dataset.step;
+      if (t === step) return;
+      if (t > step) {
+        const err = validate(step);
+        if (err) { toast(err, true); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
+      }
+      step = t; render(); window.scrollTo({ top: 0 });
+    });
 
     // bind generic inputs
     v.querySelectorAll('[data-k]').forEach(el => {
@@ -201,6 +220,8 @@ async function viewCreate(id) {
       if (back.id === 'wz-cancel' && step === 0) { location.hash = editingId ? '#/listing/' + editingId : '#/mylistings'; return; }
       step--; render();
     };
+    const saveBtn = v.querySelector('#wz-save');
+    if (saveBtn) saveBtn.onclick = () => publish(saveBtn);
     v.querySelector('#wz-next').onclick = () => {
       const err = validate(step);
       if (err) { toast(err, true); window.scrollTo({ top: 0, behavior: 'smooth' }); return; }
@@ -332,8 +353,12 @@ async function viewCreate(id) {
     draw();
   }
 
-  async function publish() {
-    const btn = v.querySelector('#wz-next'); btn.disabled = true; btn.textContent = editingId ? 'Saving…' : 'Publishing…';
+  async function publish(btn) {
+    const b = btn || v.querySelector('#wz-next');
+    // quick required-field check before saving from the middle of the wizard
+    for (const s of [0, 1, 2]) { const err = validate(s); if (err) { toast(err, true); return; } }
+    const bHtml = b.innerHTML;
+    b.disabled = true; b.textContent = editingId ? 'Saving…' : 'Publishing…';
     if (!L.contactPhone) L.contactPhone = state.user.phone || '';
     // clear costs that don't apply (keeps listings honest and tidy)
     if (L.water === 'Included in rent') L.waterCost = '';
@@ -355,7 +380,7 @@ async function viewCreate(id) {
     if (res.ok) {
       toast(editingId ? 'Listing updated' : 'Listing published!');
       location.hash = '#/listing/' + (editingId || res.id);
-    } else { toast(res.error, true); btn.disabled = false; btn.textContent = editingId ? 'Save changes' : 'Publish listing'; }
+    } else { toast(res.error, true); b.disabled = false; b.innerHTML = bHtml; }
   }
 
   render();

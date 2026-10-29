@@ -112,7 +112,9 @@ function wireReg(v) {
 // ---------- first-run admin setup ----------
 async function viewSetup() {
   const v = document.getElementById('view');
+  const gen = routeGen;
   const r = await api('/setup');
+  if (stale(gen)) return;
   if (!r.ok || !r.available) { location.hash = '#/login'; return; }
   v.innerHTML = `<div class="auth-wrap"><div class="auth-card">
     <div class="auth-brand">
@@ -151,54 +153,87 @@ function prow(icon, title, sub, href) {
 }
 
 // ---------- profile ----------
-async function viewProfile() {
+// Details are shown READ-ONLY; the Edit button opens the edit form (Save / Cancel).
+async function viewProfile(edit) {
   if (!state.user) { location.hash = '#/login'; return; }
   const v = document.getElementById('view');
   const u = state.user;
   const isLandlord = u.role === 'LANDLORD';
-  v.innerHTML = `<div class="sec-h"><h2>My profile</h2></div>
+  const roleTxt = u.role === 'ADMIN' ? 'Admin' : isLandlord ? 'Landlord' : 'Student';
+
+  // ---- read-only view ----
+  if (!edit) {
+    v.innerHTML = `<div class="sec-h"><h2>My profile</h2></div>
     <div class="auth-card">
       <div class="owner-row">
         <div class="avatar">${esc((u.name || u.username)[0].toUpperCase())}</div>
         <div><div class="nm" style="font-weight:800;font-size:16px">${esc(u.name || u.username)}</div>
-        <div class="sb">@${esc(u.username)} · ${u.role === 'ADMIN' ? 'Admin' : isLandlord ? 'Landlord' : 'Student'} · joined ${fmtDate(u.createdAt)}</div></div>
+        <div class="sb">@${esc(u.username)} · ${roleTxt} · joined ${fmtDate(u.createdAt)}</div></div>
       </div>
+      <div style="margin-top:14px">
+        <div class="kv"><span class="k">Full name</span><span class="v">${esc(u.name || '—')}</span></div>
+        <div class="kv"><span class="k">WhatsApp number</span><span class="v">${esc(u.phone || '—')}</span></div>
+        ${u.role === 'STUDENT' ? `<div class="kv"><span class="k">Admission / reg number</span><span class="v">${esc(u.regNo || '—')}</span></div>` : ''}
+        <div class="kv"><span class="k">Account</span><span class="v">${roleTxt}</span></div>
+      </div>
+      <button class="btn btn-green" id="pf-edit" style="margin-top:16px">${ic('edit')} Edit profile</button>
+    </div>`;
+    v.querySelector('#pf-edit').onclick = () => viewProfile(true);
+  }
 
+  // ---- edit form ----
+  if (edit) {
+    v.innerHTML = `<div class="sec-h"><h2>Edit profile</h2></div>
+    <div class="auth-card">
       <label class="lbl">Full name</label><input class="inp" id="pf-name" value="${esc(u.name)}">
       <label class="lbl">WhatsApp number <span style="font-weight:500">(shown to tenants on your listings)</span></label>
       <input class="inp" id="pf-phone" inputmode="tel" value="${esc(u.phone)}">
       ${u.role === 'STUDENT' ? `<label class="lbl">Admission / registration number</label><input class="inp" id="pf-regno" value="${esc(u.regNo)}">` : ''}
-      <button class="btn btn-green" id="pf-save" style="margin-top:16px">Save changes</button>
-    </div>
+      <div style="display:flex;gap:9px;margin-top:16px">
+        <button class="btn btn-outline" id="pf-cancel" style="flex:1">Cancel</button>
+        <button class="btn btn-green" id="pf-save" style="flex:1">Save changes</button>
+      </div>
+    </div>`;
+    v.querySelector('#pf-cancel').onclick = () => viewProfile(false);
+    v.querySelector('#pf-save').onclick = async () => {
+      const body = { name: v.querySelector('#pf-name').value, phone: v.querySelector('#pf-phone').value };
+      if (u.role === 'STUDENT') body.regNo = v.querySelector('#pf-regno').value;
+      const res = await api('/me', { method: 'PUT', body });
+      if (res.ok) { state.user = res.user; buildNav(); toast('Profile saved'); viewProfile(false); }
+      else toast(res.error, true);
+    };
+  }
 
+  const admRow = u.role === 'ADMIN'
+    ? `<a class="prow" href="#/admin">${ic('gear')}<span class="mid"><b>Admin panel</b><small>Verifications, boosts, reports, users</small></span><span class="bn-badge" data-adm-badge="total" hidden></span>${ic('chev', 'chev')}</a>` : '';
+
+  const tools = document.createElement('div');
+  tools.innerHTML = `
     ${isLandlord ? landlordVerifyCard(u) : ''}
 
     <div class="plabel">${isLandlord ? 'Landlord tools' : 'Quick actions'}</div>
     <div class="prowbox">
       ${isLandlord ? prow('doc', 'My listings', 'Edit, mark taken, or boost your rooms', '#/mylistings')
         + prow('plus', 'Post a new listing', 'Free plan: 2 listings · verified: 5', '#/new') : ''}
-      ${u.role === 'ADMIN' ? prow('gear', 'Admin panel', 'Verifications, boosts, reports, users', '#/admin') : ''}
+      ${admRow}
       ${prow('heart', 'Favourites', 'Rooms you saved for later', '#/favorites')}
       ${prow('shield', 'Privacy & safety', 'How ChukaHomes handles your data', '#/privacy')}
     </div>
     <div class="plabel">Settings</div>
     <div class="prowbox">
+      <button class="prow" data-theme-toggle type="button">${ic('moon')}<span class="mid"><b>Dark mode <span class="theme-state">Off</span></b><small>Easy on the eyes at night — saved on this device</small></span></button>
       <button class="prow danger" id="pf-out">${ic('out')}<span class="mid"><b>Sign out</b><small>End this session on this device</small></span></button>
     </div>`;
+  v.appendChild(tools);
+  applyTheme(document.documentElement.dataset.theme); // sync the toggle labels/state
 
-  v.querySelector('#pf-save').onclick = async () => {
-    const body = { name: v.querySelector('#pf-name').value, phone: v.querySelector('#pf-phone').value };
-    if (u.role === 'STUDENT') body.regNo = v.querySelector('#pf-regno').value;
-    const res = await api('/me', { method: 'PUT', body });
-    if (res.ok) { state.user = res.user; buildNav(); toast('Profile saved'); }
-    else toast(res.error, true);
-  };
-  v.querySelector('#pf-out').onclick = async () => {
+  tools.querySelector('#pf-out').onclick = async () => {
     await api('/logout', { method: 'POST' });
     token.set(null); state.user = null; buildNav();
     location.hash = '#/home'; toast('Signed out');
   };
 
+  if (state.user && state.user.role === 'ADMIN') refreshAdminCounts();
   wireVerifyCard(v);
 }
 
@@ -223,7 +258,7 @@ function landlordVerifyCard(u) {
 }
 
 function docCell(label) {
-  return `<div class="ph-doc" style="width:100%;height:100%;display:grid;place-items:center;background:#fbfaf5;color:var(--ink2);font-size:11.5px;font-weight:700;text-align:center;cursor:pointer;padding:6px">
+  return `<div class="ph-doc" style="width:100%;height:100%;display:grid;place-items:center;background:var(--card2);color:var(--ink2);font-size:11.5px;font-weight:700;text-align:center;cursor:pointer;padding:6px">
     ${ic('camera')}<span style="margin-top:4px">${esc(label)}</span></div>`;
 }
 

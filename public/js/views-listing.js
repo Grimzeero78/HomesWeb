@@ -3,11 +3,13 @@ let VIEWED = JSON.parse(localStorage.getItem('ch_viewed') || '[]');
 
 async function viewListing(id) {
   const v = document.getElementById('view');
+  const gen = routeGen;
   v.innerHTML = `<div class="skel" style="aspect-ratio:4/3;border-radius:16px"></div>
     <div class="skel" style="height:26px;margin-top:14px;width:70%"></div>
     <div class="skel" style="height:120px;margin-top:12px"></div>`;
 
   const r = await api('/listings/' + id);
+  if (stale(gen)) return; // navigated away while loading
   if (!r.ok) { v.innerHTML = emptyBox('Listing not found', r.error || 'It may have been removed.'); return; }
   const l = r.listing, photos = r.photos || [];
 
@@ -18,6 +20,7 @@ async function viewListing(id) {
     const f = await api('/my/favorites');
     return f.ok && f.items.some(x => x.id === l.id);
   })();
+  if (stale(gen)) return; // still fresh? the favorites fetch can also race a navigation
   const canContact = !!state.user;
   const verified = l.ownerVerify === 'APPROVED';
   const boosted = l.boostedUntil && l.boostedUntil > Date.now();
@@ -210,8 +213,10 @@ async function viewListing(id) {
 
 async function viewFavorites() {
   const v = document.getElementById('view');
+  const gen = routeGen;
   v.innerHTML = `<div class="sec-h"><h2>Favourites</h2></div>${skeletonGrid(3)}`;
   const r = await api('/my/favorites');
+  if (stale(gen)) return;
   if (!r.ok) { v.innerHTML = emptyBox('Sign in required', 'Sign in to see your saved rooms.'); return; }
   v.innerHTML = r.items.length
     ? `<div class="sec-h"><h2>Favourites</h2></div><div class="grid">${r.items.map(listingCard).join('')}</div>`

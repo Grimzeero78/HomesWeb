@@ -7,6 +7,10 @@
 <meta name="description" content="Find vacant bedsitters, single rooms and hostels around Chuka University. Chat with landlords directly. Never pay before viewing.">
 <meta name="google-site-verification" content="itMaFFWxjolLNCsfI4OfAaM8dRq-MCxghODhqdxGh1Q">
 <meta name="theme-color" content="#0e5a33">
+<script>
+// apply the saved (or system) theme before the stylesheet paints — no light flash
+(function(){try{var t=localStorage.getItem('ch_theme');if(t!=='dark'&&t!=='light')t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t;}catch(e){}})();
+</script>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/icons/icon-192.png">
@@ -24,12 +28,16 @@
       <span class="brand-word">CHUKA<b>HOMES</b></span>
     </a>
     <nav id="sidenav-links" class="side-links"></nav>
+    <button class="prow theme-prow" data-theme-toggle type="button"></button>
     <div id="sidenav-foot" class="side-foot"></div>
   </aside>
 
   <header class="topbar">
     <a class="brand-m" href="#/home"><img class="brand-logo-sm" src="/icons/icon-192.png" alt="">CHUKA<b>HOMES</b></a>
-    <div id="top-actions" class="top-acts"></div>
+    <div class="top-right">
+      <button class="theme-btn" data-theme-toggle type="button" aria-label="Toggle dark mode"></button>
+      <div id="top-actions" class="top-acts"></div>
+    </div>
   </header>
 
   <main id="view" class="view"></main>

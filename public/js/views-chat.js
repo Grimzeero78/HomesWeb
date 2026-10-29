@@ -19,12 +19,12 @@ const QR_LANDLORD = [
 async function viewChats() {
   if (!state.user) { location.hash = '#/login'; return; }
   const v = document.getElementById('view');
+  const gen = routeGen; // #view is never replaced — only its innerHTML — so guard with the route token
   v.innerHTML = `<div class="sec-h"><h2>Chats</h2></div><div class="skel" style="height:74px"></div><div class="skel" style="height:74px"></div>`;
   const load = async () => {
     const r = await api('/convs');
+    if (stale(gen)) return;            // user navigated elsewhere — never paint over the new page
     if (!r.ok) { v.innerHTML = emptyBox('Could not load chats', r.error); return; }
-    const el = document.getElementById('view');
-    if (el !== v) return; // route changed
     if (!r.items.length) {
       v.innerHTML = `<div class="sec-h"><h2>Chats</h2></div>` + emptyBox('No chats yet',
         'Open any listing and tap "Message in app" to start talking to the landlord.');
@@ -52,9 +52,11 @@ async function viewChats() {
 async function viewThread(id) {
   if (!state.user) { location.hash = '#/login'; return; }
   const v = document.getElementById('view');
+  const gen = routeGen;
   v.innerHTML = `<div class="pageload"><div class="skel" style="height:70px"></div><div class="skel" style="height:300px"></div></div>`;
 
   const info = await api('/convs/' + id);
+  if (stale(gen)) return; // tapped Map/Chat while loading — don't repaint this thread over it
   if (!info.ok) { v.innerHTML = emptyBox('Conversation not found', info.error); return; }
   const { listing, other } = info;
   const me = state.user.id;
@@ -219,7 +221,9 @@ async function viewThread(id) {
   });
 
   async function poll(initial) {
+    if (!msgsEl.isConnected) return; // thread left the DOM (navigated away) — nothing to update
     const r = await api('/convs/' + id + '/messages?after=' + lastId);
+    if (!msgsEl.isConnected) return;
     if (!r.ok) return;
     const nearBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 160;
     if (r.items.length) {

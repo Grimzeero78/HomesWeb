@@ -910,6 +910,16 @@ export async function onRequest(context) {
     // ============ ADMIN ============
     if (p0 === 'admin') {
       const u = need(['ADMIN']);
+      // tiny single-row counter the client badge poll hits — one indexed query,
+      // drives the notification dots on the admin tabs / nav / profile
+      if (seg[1] === 'counts' && method === 'GET') {
+        const c = await env.DB.prepare(
+          `SELECT (SELECT COUNT(*) FROM users WHERE verify_status = 'PENDING') AS verifications,
+                  (SELECT COUNT(*) FROM boosts WHERE status = 'PENDING') AS boosts,
+                  (SELECT COUNT(*) FROM reports WHERE status = 'OPEN') AS reports`
+        ).first();
+        return ok({ counts: c });
+      }
       if (seg[1] === 'stats' && method === 'GET') {
         const one = async (sql, ...b) => (await env.DB.prepare(sql).bind(...b).first()).n;
         const stats = {

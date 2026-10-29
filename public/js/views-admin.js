@@ -1,15 +1,19 @@
 // ChukaHomes — Admin panel: verifications, boosts, reports, listings, users, settings
+// Sections with something waiting show an orange notification badge on their tab
+// (live — the badge poll refreshes them, see refreshAdminCounts in ui.js).
 const ADM_TABS = [['overview', 'Overview'], ['verifications', 'Verifications'], ['boosts', 'Boosts'], ['reports', 'Reports'], ['listings', 'Listings'], ['users', 'Users'], ['settings', 'Settings']];
+const ADM_TAB_BADGE = { verifications: 'verifications', boosts: 'boosts', reports: 'reports' };
 
 async function viewAdmin(tab) {
   if (!state.user || state.user.role !== 'ADMIN') { location.hash = '#/login'; return; }
   tab = ADM_TABS.some(t => t[0] === tab) ? tab : 'overview';
   const v = document.getElementById('view');
   v.innerHTML = `<div class="sec-h"><h2>Admin</h2></div>
-    <div class="adm-tabs">${ADM_TABS.map(t => `<button class="chip ${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}</button>`).join('')}</div>
+    <div class="adm-tabs">${ADM_TABS.map(t => `<button class="chip ${t[0] === tab ? 'on' : ''}" data-t="${t[0]}">${t[1]}${ADM_TAB_BADGE[t[0]] ? `<span class="adm-dot" data-adm-badge="${ADM_TAB_BADGE[t[0]]}" hidden></span>` : ''}</button>`).join('')}</div>
     <div id="adm-body"><div class="skel" style="height:120px"></div></div>`;
   v.querySelectorAll('.adm-tabs .chip').forEach(c => c.onclick = () => { location.hash = '#/admin/' + c.dataset.t; });
   const body = v.querySelector('#adm-body');
+  refreshAdminCounts(); // light up the tab badges right away
 
   if (tab === 'overview') {
     const r = await api('/admin/stats');
@@ -25,7 +29,7 @@ async function viewAdmin(tab) {
       <div class="stat"><div class="n">${s.reports}</div><div class="k">Open reports</div></div>
       <div class="stat"><div class="n">${s.views}</div><div class="k">Total views</div></div>
     </div>
-    <div class="notice notice-g" style="margin-top:14px">${ic('shield')}<span>Check <b>Verifications</b> and <b>Boosts</b> tabs daily — landlords are waiting on you there.</span></div>`;
+    <div class="notice notice-g" style="margin-top:14px">${ic('shield')}<span>Orange badges on <b>Verifications</b>, <b>Boosts</b> and <b>Reports</b> mean someone is waiting on you — they update live.</span></div>`;
   }
 
   if (tab === 'verifications') {

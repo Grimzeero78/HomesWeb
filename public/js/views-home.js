@@ -3,6 +3,7 @@ const SEARCH = { q: '', area: '', ptype: '', min: '', max: '', gender: '', furni
 
 async function viewHome() {
   const v = document.getElementById('view');
+  const gen = routeGen;
   v.innerHTML = `
     <section class="hero">
       <div class="hero-leaf"></div>
@@ -36,6 +37,7 @@ async function viewHome() {
     api('/listings?limit=6&sort=new'),
     api('/listings?limit=8&sort=new'),
   ]);
+  if (stale(gen)) return; // navigated away while loading — the sections below are gone
   const items = (newest.ok && newest.items) || [];
   const bItems = ((boosted.ok && boosted.items) || []).filter(l => l.boostedUntil && l.boostedUntil > Date.now());
 
@@ -70,6 +72,7 @@ async function viewHome() {
 
 async function viewSearch() {
   const v = document.getElementById('view');
+  const gen = routeGen;
   v.innerHTML = `
     <div class="filterbar">
       <input class="inp" id="s-q" placeholder="Search area, landmark…" value="${esc(SEARCH.q)}">
@@ -137,9 +140,12 @@ async function viewSearch() {
     p.set('sort', SEARCH.sort);
     p.set('limit', 60);
     const r = await api('/listings?' + p.toString());
+    if (stale(gen)) return;
     const box = v.querySelector('#s-results');
+    if (!box) return; // view replaced while fetching
     if (!r.ok) { box.innerHTML = emptyBox('Search failed', r.error || 'Try again'); return; }
-    v.querySelector('#s-count').textContent = r.items.length + (r.items.length === 1 ? ' room found' : ' rooms found');
+    const cnt = v.querySelector('#s-count');
+    if (cnt) cnt.textContent = r.items.length + (r.items.length === 1 ? ' room found' : ' rooms found');
     box.innerHTML = r.items.length ? `<div class="grid">${r.items.map(listingCard).join('')}</div>`
       : emptyBox('Nothing matched', 'Try a wider price range or remove some filters.');
   }

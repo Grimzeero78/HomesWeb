@@ -2,6 +2,14 @@
 let cleanups = [];
 function onLeave(fn) { cleanups.push(fn); }
 
+// Route generation token — the #view element lives for the whole session, only its
+// innerHTML changes. Any view that awaits a fetch then writes innerHTML could land
+// AFTER the user has already navigated elsewhere (the classic "opened Chats, tapped
+// Map, and the chat list painted over the map" bug). Every async view captures
+// routeGen at entry and bails if it has gone stale by the time the fetch returns.
+let routeGen = 0;
+const stale = gen => gen !== routeGen;
+
 const NAV = [
   ['#/', 'home', 'Home'],
   ['#/search', 'search', 'Search'],
@@ -29,6 +37,7 @@ const ROUTES = [
 ];
 
 async function route() {
+  routeGen++;
   cleanups.forEach(f => { try { f(); } catch {} });
   cleanups = [];
   window.scrollTo({ top: 0 });
@@ -44,7 +53,8 @@ async function route() {
 
 function buildNav(active) {
   const name = active !== undefined ? active : (location.hash.replace(/^#\/?/, '').split('/')[0] || 'home');
-  const map = { '': 'home', listing: 'home', new: 'home', edit: 'home', boost: 'home', favorites: 'home', mylistings: 'profile', login: 'profile', register: 'profile', setup: 'profile', admin: 'profile', chat: 'chats', thread: 'chats' };
+  // route-name → bottom-nav key (map → pin: without this the Map tab never highlighted)
+  const map = { '': 'home', listing: 'home', new: 'home', edit: 'home', boost: 'home', favorites: 'home', mylistings: 'profile', login: 'profile', register: 'profile', setup: 'profile', admin: 'profile', chat: 'chats', thread: 'chats', map: 'pin' };
   const cur = map[name] !== undefined ? map[name] : name;
 
   const bn = document.getElementById('bottomnav');
@@ -56,11 +66,11 @@ function buildNav(active) {
   }).join('');
 
   const sn = document.getElementById('sidenav-links');
-  const links = [...NAV, ...(state.user && state.user.role === 'ADMIN' ? [['#/admin', 'gear', 'Admin']] : []),
+  const links = [...NAV, ...(state.user && state.user.role === 'ADMIN' ? [['#/admin', 'gear', 'Admin', 'adm']] : []),
     ...(state.user && state.user.role === 'LANDLORD' ? [['#/mylistings', 'doc', 'My listings'], ['#/new', 'plus', 'Post a listing']] : []),
     ...(state.user ? [['#/favorites', 'heart', 'Favourites']] : [])];
-  sn.innerHTML = links.map(([href, key, label]) =>
-    `<a class="sl ${cur === key ? 'on' : ''}" href="${href}" data-nav="${key}">${ic(key === 'chats' ? 'chat' : key)}<span>${label}</span>${key === 'chats' ? '<span class="bn-badge" id="snav-dot" hidden></span>' : ''}</a>`).join('');
+  sn.innerHTML = links.map(([href, key, label, badge]) =>
+    `<a class="sl ${cur === key ? 'on' : ''}" href="${href}" data-nav="${key}">${ic(key === 'chats' ? 'chat' : key)}<span>${label}</span>${key === 'chats' ? '<span class="bn-badge" id="snav-dot" hidden></span>' : ''}${badge === 'adm' ? '<span class="bn-badge" data-adm-badge="total" hidden></span>' : ''}</a>`).join('');
 
   const ta = document.getElementById('top-actions');
   const foot = document.getElementById('sidenav-foot');
@@ -89,10 +99,18 @@ async function refreshUnread() {
     if (n > 0) { d.textContent = n > 9 ? '9+' : n; d.hidden = false; }
     else d.hidden = true;
   });
+  // admins also get told about new verifications / boosts / reports (badge lights up
+  // on the Admin links and on the admin section tabs) — one tiny 1-row query
+  if (state.user.role === 'ADMIN') refreshAdminCounts();
 }
 
 // ---------- boot ----------
 (async function boot() {
+  applyTheme(currentTheme()); // before first paint of the shell — no light flash for dark users
+  // one delegated handler runs every theme button on any page (topbar, side nav, profile)
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-theme-toggle]')) { e.preventDefault(); toggleTheme(); }
+  });
   try {
     const [s, m] = await Promise.all([api('/settings'), token.get() ? api('/me') : Promise.resolve(null)]);
     if (s && s.ok && s.settings) state.settings = { ...state.settings, ...s.settings };

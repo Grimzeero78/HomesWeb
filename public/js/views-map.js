@@ -5,6 +5,7 @@
 // (listing page, wizard) never hijack the page scroll.
 async function viewMap() {
   const v = document.getElementById('view');
+  const gen = routeGen;
   v.innerHTML = `
     <div class="sec-h"><h2>Map of rooms near campus</h2></div>
     <div class="map-search">
@@ -18,14 +19,17 @@ async function viewMap() {
     </div>`;
 
   const r = await api('/listings?limit=100&sort=walk');
+  if (stale(gen)) return; // navigated away while loading — never paint over the new page
   const items = (r.ok && r.items) || [];
   renderSide(items);
 
   const box = v.querySelector('#mapbox');
+  if (!box) return;
   let M = null;
   const markers = new Map(); // listing id -> marker
   try {
     await loadLeaflet();
+    if (stale(gen)) return; // Leaflet can take a moment on slow networks
     box.querySelector('.gm-err')?.remove();
     box.classList.remove('gmap-loading');
     M = makeMap(box, { lat: GATE.lat, lng: GATE.lng, zoom: 16, zoomMin: 10, mode: 'map' });

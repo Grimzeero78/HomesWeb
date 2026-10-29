@@ -2,9 +2,11 @@
 async function viewMyListings() {
   if (!state.user) { location.hash = '#/login'; return; }
   const v = document.getElementById('view');
+  const gen = routeGen;
   v.innerHTML = `<div class="sec-h"><h2>My listings</h2></div>${skeletonGrid(2)}
     <a class="btn btn-green btn-block" href="#/new" style="margin-top:14px">${ic('plus')} Post a new listing</a>`;
   const r = await api('/my/listings');
+  if (stale(gen)) return; // navigated away while loading
   if (!r.ok) { v.innerHTML = emptyBox('Sign in required', r.error); return; }
   const items = r.items;
   const boosted = l => l.boostedUntil && l.boostedUntil > Date.now();
@@ -57,8 +59,10 @@ async function viewMyListings() {
 async function viewBoost(id) {
   if (!state.user) { location.hash = '#/login'; return; }
   const v = document.getElementById('view');
+  const gen = routeGen;
   v.innerHTML = skeletonGrid(1);
   const r = await api('/listings/' + id);
+  if (stale(gen)) return;
   if (!r.ok || !r.isOwner) { v.innerHTML = emptyBox('Listing not found', 'Only the owner can boost this listing.'); return; }
   const l = r.listing;
   const paybill = state.settings.paybill_number || '0143374333';
