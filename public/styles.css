@@ -470,11 +470,6 @@ html[data-theme="dark"] .hero-chips .chip.on,html[data-theme="dark"] .hero-chips
 html[data-theme="dark"] .gal-nav{background:rgba(20,23,19,.85);color:#fff}
 html[data-theme="dark"] .photo-x{background:rgba(0,0,0,.75)}
 html[data-theme="dark"] .badge-boost,html[data-theme="dark"] .bn-badge,html[data-theme="dark"] .conv-un,html[data-theme="dark"] .adm-dot{color:#fff}
-/* dark Google tiles: controlled inversion keeps roads/labels readable */
-html[data-theme="dark"] .leaflet-tile-pane{filter:invert(1) hue-rotate(185deg) saturate(.45) brightness(.95) contrast(.88)}
-html[data-theme="dark"] .leaflet-popup-content-wrapper{background:var(--card);color:var(--ink)}
-html[data-theme="dark"] .leaflet-popup-content b{color:var(--ink)}
-html[data-theme="dark"] .leaflet-control-attribution{background:rgba(20,23,19,.82)!important;color:var(--ink3)}
-html[data-theme="dark"] .leaflet-control-attribution a{color:var(--ink2)}
-html[data-theme="dark"] .leaflet-container{background:var(--mapbg)}
-html[data-theme="dark"] .gmap-btn,html[data-theme="dark"] .gmap-hint,html[data-theme="dark"] .gprice{box-shadow:0 2px 10px rgba(0,0,0,.55)}
+/* MAPS STAY WHITE IN DARK MODE (owner request): the Google map keeps its normal
+   light look in both themes — no tile inversion, no dark popups. Accuracy and
+   readability of the real map beat theme consistency, so no dark overrides here. */

@@ -980,7 +980,20 @@ export async function onRequest(context) {
         const b = await json_();
         const rep = await env.DB.prepare('SELECT * FROM reports WHERE id = ?').bind(N(seg[2])).first();
         if (!rep) return bad('Report not found', 404);
-        if (b.action === 'remove') {
+        if (b.action === 'delete') {
+          // hard delete the reported listing entirely — same wipe as the Listings
+          // tab, and the reports die with the listing so nothing dangles open
+          const lid = rep.listingId;
+          await env.DB.batch([
+            env.DB.prepare('DELETE FROM messages WHERE convId IN (SELECT id FROM conversations WHERE listingId = ?)').bind(lid),
+            env.DB.prepare('DELETE FROM conversations WHERE listingId = ?').bind(lid),
+            env.DB.prepare('DELETE FROM photos WHERE listingId = ?').bind(lid),
+            env.DB.prepare('DELETE FROM favorites WHERE listing_id = ?').bind(lid),
+            env.DB.prepare('DELETE FROM reports WHERE listingId = ?').bind(lid),
+            env.DB.prepare('DELETE FROM boosts WHERE listingId = ?').bind(lid),
+            env.DB.prepare('DELETE FROM listings WHERE id = ?').bind(lid),
+          ]);
+        } else if (b.action === 'remove') {
           await env.DB.batch([
             env.DB.prepare("UPDATE listings SET status = 'REMOVED' WHERE id = ?").bind(rep.listingId),
             env.DB.prepare("UPDATE reports SET status = 'RESOLVED' WHERE id = ?").bind(rep.id)
@@ -1004,6 +1017,21 @@ export async function onRequest(context) {
         await env.DB.prepare("UPDATE listings SET status = 'AVAILABLE' WHERE id = ?").bind(N(seg[2])).run();
         return ok();
       }
+      // HARD delete — 'remove' only hides a listing; this one wipes every trace
+      // (photos, chats, favorites, reports, boosts, the row itself) so it is GONE.
+      if (seg[1] === 'listings' && seg[2] && seg[3] === 'delete' && method === 'POST') {
+        const lid = N(seg[2]);
+        await env.DB.batch([
+          env.DB.prepare('DELETE FROM messages WHERE convId IN (SELECT id FROM conversations WHERE listingId = ?)').bind(lid),
+          env.DB.prepare('DELETE FROM conversations WHERE listingId = ?').bind(lid),
+          env.DB.prepare('DELETE FROM photos WHERE listingId = ?').bind(lid),
+          env.DB.prepare('DELETE FROM favorites WHERE listing_id = ?').bind(lid),
+          env.DB.prepare('DELETE FROM reports WHERE listingId = ?').bind(lid),
+          env.DB.prepare('DELETE FROM boosts WHERE listingId = ?').bind(lid),
+          env.DB.prepare('DELETE FROM listings WHERE id = ?').bind(lid),
+        ]);
+        return ok();
+      }
       if (seg[1] === 'users' && method === 'GET') {
         const rows = (await env.DB.prepare(
           `SELECT id, username, name, role, phone, verify_status, suspended, created_at FROM users ORDER BY created_at DESC LIMIT 300`)
@@ -1013,6 +1041,31 @@ export async function onRequest(context) {
       if (seg[1] === 'users' && seg[2] && seg[3] === 'suspend' && method === 'POST') {
         const b = await json_();
         await env.DB.prepare('UPDATE users SET suspended = ? WHERE id = ? AND role != ?').bind(b.on ? 1 : 0, N(seg[2]), 'ADMIN').run();
+        return ok();
+      }
+      // HARD delete a user — suspending only locks them out; this removes the
+      // account and everything it owns: sessions, listings (+ photos, chats,
+      // favorites, reports, boosts on them), their chats, favorites and reports.
+      // Admin accounts can never be deleted, and an admin cannot delete themself.
+      if (seg[1] === 'users' && seg[2] && seg[3] === 'delete' && method === 'POST') {
+        const uid = N(seg[2]);
+        if (uid === u.id) return bad('You cannot delete your own admin account.');
+        await env.DB.batch([
+          env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(uid),
+          env.DB.prepare('DELETE FROM messages WHERE convId IN (SELECT id FROM conversations WHERE studentId = ? OR landlordId = ?)').bind(uid, uid),
+          env.DB.prepare('DELETE FROM conversations WHERE studentId = ? OR landlordId = ?').bind(uid, uid),
+          env.DB.prepare('DELETE FROM messages WHERE convId IN (SELECT id FROM conversations WHERE listingId IN (SELECT id FROM listings WHERE ownerId = ?))').bind(uid),
+          env.DB.prepare('DELETE FROM conversations WHERE listingId IN (SELECT id FROM listings WHERE ownerId = ?)').bind(uid),
+          env.DB.prepare('DELETE FROM photos WHERE listingId IN (SELECT id FROM listings WHERE ownerId = ?)').bind(uid),
+          env.DB.prepare('DELETE FROM favorites WHERE listing_id IN (SELECT id FROM listings WHERE ownerId = ?)').bind(uid),
+          env.DB.prepare('DELETE FROM reports WHERE listingId IN (SELECT id FROM listings WHERE ownerId = ?)').bind(uid),
+          env.DB.prepare('DELETE FROM boosts WHERE listingId IN (SELECT id FROM listings WHERE ownerId = ?)').bind(uid),
+          env.DB.prepare('DELETE FROM listings WHERE ownerId = ?').bind(uid),
+          env.DB.prepare('DELETE FROM favorites WHERE user_id = ?').bind(uid),
+          env.DB.prepare('DELETE FROM reports WHERE reporterId = ?').bind(uid),
+          env.DB.prepare('DELETE FROM boosts WHERE userId = ?').bind(uid),
+          env.DB.prepare('DELETE FROM users WHERE id = ? AND role != ?').bind(uid, 'ADMIN'),
+        ]);
         return ok();
       }
     }

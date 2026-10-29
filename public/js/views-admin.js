@@ -102,12 +102,23 @@ async function viewAdmin(tab) {
           <div class="row-sub" style="margin-top:4px">Listing status: ${esc(rep.lstatus)}</div>
         </div></div>
         <div class="row-acts">
-          <button class="btn btn-danger btn-sm" data-a="remove">${ic('trash')} Remove listing</button>
+          <button class="btn btn-outline btn-sm" data-a="remove">${ic('eye')} Hide listing</button>
+          <button class="btn btn-danger btn-sm" data-a="delete">${ic('trash')} Delete forever</button>
           <button class="btn btn-outline btn-sm" data-a="dismiss">Dismiss report</button>
         </div>
       </div>`).join('') : emptyBox('No open reports', 'Student reports will appear here.');
     body.querySelectorAll('[data-a]').forEach(b => b.onclick = async () => {
-      const res = await api('/admin/reports/' + b.closest('[data-r]').dataset.r, { body: { action: b.dataset.a } });
+      const act = b.dataset.a, rid = b.closest('[data-r]').dataset.r;
+      if (act === 'delete') {
+        confirmDlg('Delete this listing forever?',
+          'It will be wiped completely — the listing, its photos and every chat about it. It will NOT remain on any list, and the report closes with it. This cannot be undone.',
+          'Delete forever', async () => {
+            const res = await api('/admin/reports/' + rid, { body: { action: 'delete' } });
+            if (res.ok) { toast('Deleted for good'); viewAdmin('reports'); } else toast(res.error, true);
+          }, true);
+        return;
+      }
+      const res = await api('/admin/reports/' + rid, { body: { action: act } });
       if (res.ok) { toast('Done'); viewAdmin('reports'); } else toast(res.error, true);
     });
   }
@@ -124,12 +135,23 @@ async function viewAdmin(tab) {
         </div>
         <div class="row-acts">
           ${l.status !== 'REMOVED'
-            ? `<button class="btn btn-danger btn-sm" data-x="remove">${ic('trash')} Remove</button>`
+            ? `<button class="btn btn-outline btn-sm" data-x="remove">${ic('eye')} Hide</button>`
             : `<button class="btn btn-outline btn-sm" data-x="restore">${ic('check')} Restore</button>`}
+          <button class="btn btn-danger btn-sm" data-x="delete">${ic('trash')} Delete forever</button>
         </div>
       </div>`).join('') : emptyBox('No listings', 'Nothing has been posted yet.');
     body.querySelectorAll('[data-x]').forEach(b => b.onclick = async () => {
-      const res = await api('/admin/listings/' + b.closest('[data-l]').dataset.l + '/' + b.dataset.x, { method: 'POST', body: {} });
+      const id = b.closest('[data-l]').dataset.l;
+      if (b.dataset.x === 'delete') {
+        confirmDlg('Delete this listing forever?',
+          'It will be wiped completely — the listing, its photos and every chat about it. It will NOT remain on any list. This cannot be undone.',
+          'Delete forever', async () => {
+            const res = await api('/admin/listings/' + id + '/delete', { method: 'POST', body: {} });
+            if (res.ok) { toast('Deleted for good'); viewAdmin('listings'); } else toast(res.error, true);
+          }, true);
+        return;
+      }
+      const res = await api('/admin/listings/' + id + '/' + b.dataset.x, { method: 'POST', body: {} });
       if (res.ok) { toast('Done'); viewAdmin('listings'); } else toast(res.error, true);
     });
   }
@@ -148,13 +170,23 @@ async function viewAdmin(tab) {
           </div>
         </div>
         ${u.role !== 'ADMIN' ? `<div class="row-acts">
-          <button class="btn ${u.suspended ? 'btn-outline' : 'btn-danger'} btn-sm" data-s="${u.suspended ? 0 : 1}">
+          <button class="btn btn-outline btn-sm" data-s="${u.suspended ? 0 : 1}">
             ${u.suspended ? 'Unsuspend' : 'Suspend'}</button>
+          <button class="btn btn-danger btn-sm" data-udel="${u.id}">${ic('trash')} Delete account</button>
         </div>` : ''}
       </div>`).join('');
     body.querySelectorAll('[data-s]').forEach(b => b.onclick = async () => {
       const res = await api('/admin/users/' + b.closest('[data-u]').dataset.u + '/suspend', { body: { on: b.dataset.s === '1' } });
       if (res.ok) { toast('Done'); viewAdmin('users'); } else toast(res.error, true);
+    });
+    body.querySelectorAll('[data-udel]').forEach(b => b.onclick = () => {
+      const card = b.closest('[data-u]');
+      confirmDlg('Delete this account forever?',
+        'The user and everything they own will be wiped — their listings, photos and all their chats. They will NOT remain on the list. This cannot be undone.',
+        'Delete forever', async () => {
+          const res = await api('/admin/users/' + card.dataset.u + '/delete', { method: 'POST', body: {} });
+          if (res.ok) { toast('Account deleted for good'); viewAdmin('users'); } else toast(res.error, true);
+        }, true);
     });
   }
 

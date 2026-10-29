@@ -1,6 +1,6 @@
 // ChukaHomes — shared UI helpers, constants, icons
 const TYPES = ['Bedsitter', 'Single Room', '1 Bedroom', '2 Bedroom', 'Shared Hostel Room', 'Double Room'];
-const AREAS = ['Ndagani', 'Marine', 'Slaughter', 'Mungoni'];
+const AREAS = ['Ndagani', 'Marine', 'Slaughter', 'Mungoni', 'Lowlands'];
 const FURN = ['Furnished', 'Semi-furnished', 'Unfurnished'];
 const PERIODS = ['Per Month', 'Per Semester (4 months)', 'Per Year'];
 const WATER = ['Included in rent', 'Pay separately', 'Rationed'];
@@ -33,6 +33,7 @@ const CHUKA_PLACES = [
   { n: 'Marine',                   lat: -0.3233,  lng: 37.6648 },
   { n: 'Slaughter',                lat: -0.3165,  lng: 37.6644 },
   { n: 'Mungoni',                  lat: -0.3190,  lng: 37.6464 },
+  { n: 'Lowlands',                 lat: -0.3258,  lng: 37.6542,  hide: 1 },  // search-only: no verified OSM label yet — the belt between Chuka Town and the campus; landlords then drop the pin exactly
   { n: 'Stadium Road',             lat: -0.3228,  lng: 37.6650 },
 ];
 const BOOST = { amountKes: 200, days: 7 };
